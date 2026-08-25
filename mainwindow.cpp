@@ -33,6 +33,28 @@ MainWindow::MainWindow(QWidget *parent)
     cartesianTime = 0;
     selectedCircleAlgorithm = 0; // Default Polar
     selectedalgorithm = 0; // Default DDA
+    ellipseAnimationTimer = new QTimer(this);
+    connect(ellipseAnimationTimer, SIGNAL(timeout()), this, SLOT(animateEllipseStep()));
+    ellipseAnimationStep = -1;
+
+    ellipsePolarTime = 0;
+    ellipseMidpointTime = 0;
+    ellipseCartesianTime = 0;
+    selectedEllipseAlgorithm = 3; 
+    
+    ellipseCenter = QPoint(0, 0);
+    ellipseRx = 0;
+    ellipseRy = 0;
+    hasEllipseCenter = false;
+    hasEllipseRx = false;
+    hasEllipseRy = false;
+    ellipseVisible = false;
+    ellipseDraggingPoint = 0;
+    ellipseQuadColors = false;
+    ellipseRegionSplit = false;
+    ellipseRotation = 0;
+    ellipseThickness = 1;
+
 
     connect(ui->tabWidget, &QTabWidget::currentChanged, this, [this](int index) {
         Q_UNUSED(index);
@@ -40,6 +62,8 @@ MainWindow::MainWindow(QWidget *parent)
         lineAnimationStep = -1;
         if (animationTimer->isActive()) animationTimer->stop();
         if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+        if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+        ellipseAnimationStep = -1;
         drawgrid();
     });
     gridsize = ui->spinBox->value();
@@ -55,6 +79,9 @@ MainWindow::MainWindow(QWidget *parent)
     linevisible = false;
 
     draggingpoint = 0;
+
+    ellipseDraggingPoint = 0;
+
     selectedalgorithm = 1;
 
     ddatime = 0;
@@ -554,7 +581,70 @@ void MainWindow::drawgrid()
                     drawCircleSymmetry(painter, activePoints, color);
                 }
             }
+
         }
+    }
+    
+    if (ui->tabWidget->currentIndex() == 2) {
+        pixelBuffer.clear();
+        // Draw Persistent Ellipses First
+        for (const PersistentEllipse &pe : persistentEllipses) {
+            qint64 dummy_time = 0;
+            QVector<QPoint> pts;
+            if (pe.algorithm == 0) pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
+            else if (pe.algorithm == 1) pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
+            else if (pe.algorithm == 2) pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
+            else {
+                pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
+                drawEllipseSymmetry(painter, pts, QColor(255, 0, 127, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+                pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
+                drawEllipseSymmetry(painter, pts, QColor(0, 245, 212, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+                pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
+                drawEllipseSymmetry(painter, pts, QColor(56, 189, 248, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+                continue;
+            }
+            drawEllipseSymmetry(painter, pts, pe.color, pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+        }
+        
+    
+        if (ellipseVisible) {
+            if (selectedEllipseAlgorithm == 3) {
+                // All Overlap
+                if (ellipseAnimationStep >= 0) {
+                    int sPol = (ellipseAnimationStep < ellipsePolarPoints.size()) ? ellipseAnimationStep : ellipsePolarPoints.size();
+                    int sMid = (ellipseAnimationStep < ellipseMidpointPoints.size()) ? ellipseAnimationStep : ellipseMidpointPoints.size();
+                    int sCar = (ellipseAnimationStep < ellipseCartesianPoints.size()) ? ellipseAnimationStep : ellipseCartesianPoints.size();
+                    drawEllipseSymmetry(painter, ellipsePolarPoints.mid(0, sPol), QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                    drawEllipseSymmetry(painter, ellipseMidpointPoints.mid(0, sMid), QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, ellipseRegionSplit);
+                    drawEllipseSymmetry(painter, ellipseCartesianPoints.mid(0, sCar), QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                } else {
+                    drawEllipseSymmetry(painter, ellipsePolarPoints, QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                    drawEllipseSymmetry(painter, ellipseMidpointPoints, QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, ellipseRegionSplit);
+                    drawEllipseSymmetry(painter, ellipseCartesianPoints, QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                }
+            } else {
+                QVector<QPoint> activePoints;
+                QColor color;
+                if (selectedEllipseAlgorithm == 0) { activePoints = ellipsePolarPoints; color = QColor(255, 0, 127); }
+                else if (selectedEllipseAlgorithm == 1) { activePoints = ellipseMidpointPoints; color = QColor(0, 245, 212); }
+                else { activePoints = ellipseCartesianPoints; color = QColor(56, 189, 248); }
+                
+                if (ellipseAnimationStep >= 0) {
+                    int subsetSize = (ellipseAnimationStep < activePoints.size()) ? ellipseAnimationStep : activePoints.size();
+                    QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
+                    drawEllipseSymmetry(painter, animatedSubset, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
+                } else {
+                    drawEllipseSymmetry(painter, activePoints, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
+                }
+            }
+        }
+        renderPixelBuffer(painter);
+    }
+
+    if (ui->tabWidget->currentIndex() == 2) {
+        if (hasEllipseCenter) drawpoint(painter, ellipseCenter, QColor(247, 118, 142));
+        if (hasEllipseRx) drawpoint(painter, QPoint(ellipseCenter.x() + ellipseRx, ellipseCenter.y()), QColor(122, 162, 247));
+        if (hasEllipseRy) drawpoint(painter, QPoint(ellipseCenter.x(), ellipseCenter.y() + ellipseRy), QColor(115, 218, 202));
     }
 
     if (haspoint1)
@@ -589,9 +679,49 @@ void MainWindow::mouse_pressed()
     lineAnimationStep = -1;
     if (animationTimer->isActive()) animationTimer->stop();
     if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+        if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+        ellipseAnimationStep = -1;
     
     QPoint clickpos(org_x, org_y);
     QPoint logical = screentological(clickpos);
+
+    if (ui->tabWidget->currentIndex() == 2) {
+        if (hasEllipseCenter && nearpoint(logical, ellipseCenter)) {
+            ellipseDraggingPoint = 1; statusBar()->showMessage("Dragging Ellipse Center"); return;
+        }
+        if (hasEllipseRx && nearpoint(logical, QPoint(ellipseCenter.x() + ellipseRx, ellipseCenter.y()))) {
+            ellipseDraggingPoint = 2; statusBar()->showMessage("Dragging Ellipse Radius X"); return;
+        }
+        if (hasEllipseRy && nearpoint(logical, QPoint(ellipseCenter.x(), ellipseCenter.y() + ellipseRy))) {
+            ellipseDraggingPoint = 3; statusBar()->showMessage("Dragging Ellipse Radius Y"); return;
+        }
+
+        if (!hasEllipseCenter) {
+            ellipseCenter = logical; hasEllipseCenter = true;
+            ui->comboEllipsePoint->setItemText(0, "Center : (" + QString::number(ellipseCenter.x()) + ", " + QString::number(ellipseCenter.y()) + ")");
+            drawgrid(); statusBar()->showMessage("Center selected. Now select Point 2 for Radius X."); return;
+        }
+        if (!hasEllipseRx) {
+            ellipseRx = qAbs(logical.x() - ellipseCenter.x());
+            if (ellipseRx == 0) ellipseRx = 1;
+            hasEllipseRx = true;
+            ui->spinBoxRx->blockSignals(true); ui->spinBoxRx->setValue(ellipseRx); ui->spinBoxRx->blockSignals(false);
+            ui->comboEllipsePoint->setItemText(1, "Radius X : " + QString::number(ellipseRx));
+            drawgrid(); statusBar()->showMessage("Radius X set. Now select Point 3 for Radius Y."); return;
+        }
+        if (!hasEllipseRy) {
+            ellipseRy = qAbs(logical.y() - ellipseCenter.y());
+            if (ellipseRy == 0) ellipseRy = 1;
+            hasEllipseRy = true; ellipseVisible = true;
+            ui->spinBoxRy->blockSignals(true); ui->spinBoxRy->setValue(ellipseRy); ui->spinBoxRy->blockSignals(false);
+            ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
+            calculateEllipseAlgorithms();
+            on_btnAnimateEllipse_clicked();
+            drawgrid(); statusBar()->showMessage("Ellipse fully defined."); return;
+        }
+        return;
+    }
+
 
     if (haspoint1 && nearpoint(logical, point1))
     {
@@ -655,7 +785,34 @@ void MainWindow::mouse_dragged(QPoint &pos)
     lineAnimationStep = -1;
     if (animationTimer->isActive()) animationTimer->stop();
     if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+        if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+        ellipseAnimationStep = -1;
     
+    
+    if (ui->tabWidget->currentIndex() == 2) {
+        if (ellipseDraggingPoint == 0) return;
+        QPoint logical = screentological(pos);
+        if (ellipseDraggingPoint == 1 && hasEllipseCenter) {
+            ellipseCenter = logical;
+            ui->comboEllipsePoint->setItemText(0, "Center : (" + QString::number(ellipseCenter.x()) + ", " + QString::number(ellipseCenter.y()) + ")");
+        } else if (ellipseDraggingPoint == 2 && hasEllipseRx) {
+            ellipseRx = qAbs(logical.x() - ellipseCenter.x());
+            if (ellipseRx == 0) ellipseRx = 1;
+            ui->spinBoxRx->blockSignals(true); ui->spinBoxRx->setValue(ellipseRx); ui->spinBoxRx->blockSignals(false);
+            ui->comboEllipsePoint->setItemText(1, "Radius X : " + QString::number(ellipseRx));
+        } else if (ellipseDraggingPoint == 3 && hasEllipseRy) {
+            ellipseRy = qAbs(logical.y() - ellipseCenter.y());
+            if (ellipseRy == 0) ellipseRy = 1;
+            ui->spinBoxRy->blockSignals(true); ui->spinBoxRy->setValue(ellipseRy); ui->spinBoxRy->blockSignals(false);
+            ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
+        }
+        if (hasEllipseCenter && hasEllipseRx && hasEllipseRy) {
+            calculateEllipseAlgorithms();
+        }
+        drawgrid();
+        return;
+    }
+
     if (draggingpoint == 0)
         return;
 
@@ -691,6 +848,9 @@ void MainWindow::mouse_dragged(QPoint &pos)
 void MainWindow::mouse_released()
 {
     draggingpoint = 0;
+
+    ellipseDraggingPoint = 0;
+
     isDragging = false;
 
     if (haspoint1 && haspoint2)
@@ -723,6 +883,9 @@ void MainWindow::on_clear_clicked()
     linevisible = false;
     draggingpoint = 0;
 
+    ellipseDraggingPoint = 0;
+
+
     point1 = QPoint(0, 0);
     point2 = QPoint(0, 0);
 
@@ -734,6 +897,8 @@ void MainWindow::on_clear_clicked()
     
     lineAnimationStep = -1;
     if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+        if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+        ellipseAnimationStep = -1;
     
     ui->comboLinePoint->setItemText(0, "Select Point 1");
     ui->comboLinePoint->setItemText(1, "Select Point 2");
@@ -885,6 +1050,13 @@ void MainWindow::on_sliderSpeed_valueChanged(int value)
         if (interval < 1) interval = 1;
         lineAnimationTimer->setInterval(interval);
     }
+
+    if (ellipseAnimationTimer->isActive()) {
+        int interval = qRound(30 / animationSpeedMultiplier);
+        if (interval < 1) interval = 1;
+        ellipseAnimationTimer->setInterval(interval);
+    }
+
 }
 
 void MainWindow::on_comboLineAlgo_currentIndexChanged(int index) {
@@ -937,4 +1109,350 @@ void MainWindow::on_btnClearCircle_clicked() {
     ui->spinBoxRadius->blockSignals(false);
     drawgrid();
     statusBar()->showMessage("Circle cleared. Select Center.");
+}
+
+QVector<QPoint> MainWindow::calculateEllipsePolar(QPoint center, int rx, int ry, qint64 &time)
+{
+    Q_UNUSED(center);
+    QElapsedTimer timer; timer.start();
+    ellipsePolarLogs.clear();
+    QVector<QPoint> points;
+    if (rx == 0 && ry == 0) { points.append(QPoint(0,0)); time = timer.nsecsElapsed(); return points; }
+    
+    double max_r = std::max(rx, ry);
+    double dtheta = 1.0 / max_r;
+    for (double theta = 0; theta <= M_PI_2 + dtheta; theta += dtheta) {
+        if (theta > M_PI_2) theta = M_PI_2; // cap at 90 deg
+        int x = qRound(rx * qCos(theta));
+        int y = qRound(ry * qSin(theta));
+        points.append(QPoint(x, y));
+        ellipsePolarLogs.append(QString("<span style='color:#7aa2f7'>Polar:</span> Theta=%1 rad | X=%2, Y=%3").arg(theta, 0, 'f', 3).arg(x).arg(y));
+        if (theta == M_PI_2) break;
+    }
+    time = timer.nsecsElapsed();
+    return points;
+}
+
+QVector<QPoint> MainWindow::calculateEllipseMidpoint(QPoint center, int rx, int ry, qint64 &time)
+{
+    Q_UNUSED(center);
+    QElapsedTimer timer; timer.start();
+    ellipseMidpointLogs.clear();
+    QVector<QPoint> points;
+    if (rx == 0 && ry == 0) { points.append(QPoint(0,0)); time = timer.nsecsElapsed(); return points; }
+
+    long long rx2 = (long long)rx * rx;
+    long long ry2 = (long long)ry * ry;
+    long long tworx2 = 2 * rx2;
+    long long twory2 = 2 * ry2;
+    long long x = 0;
+    long long y = ry;
+    long long px = 0;
+    long long py = tworx2 * y;
+    
+    // Region 1
+    long long p1 = ry2 - (rx2 * ry) + (rx2 / 4);
+    while (px < py) {
+        points.append(QPoint(x, y));
+        ellipseMidpointLogs.append(QString("<span style='color:#bb9af7'>[Region 1]</span> X=%1, Y=%2 | P1=%3").arg(x).arg(y).arg(p1));
+        x++;
+        px += twory2;
+        if (p1 < 0) {
+            p1 += ry2 + px;
+        } else {
+            y--;
+            py -= tworx2;
+            p1 += ry2 + px - py;
+        }
+    }
+    
+    // Region 2
+    long long p2 = ry2 * (x * x + x) + ry2 / 4 + rx2 * (y - 1) * (y - 1) - rx2 * ry2;
+    while (y >= 0) {
+        points.append(QPoint(x, y));
+        ellipseMidpointLogs.append(QString("<span style='color:#e0af68'>[Region 2]</span> X=%1, Y=%2 | P2=%3").arg(x).arg(y).arg(p2));
+        y--;
+        py -= tworx2;
+        if (p2 > 0) {
+            p2 += rx2 - py;
+        } else {
+            x++;
+            px += twory2;
+            p2 += rx2 - py + px;
+        }
+    }
+    time = timer.nsecsElapsed();
+    return points;
+}
+
+QVector<QPoint> MainWindow::calculateEllipseCartesian(QPoint center, int rx, int ry, qint64 &time)
+{
+    Q_UNUSED(center);
+    QElapsedTimer timer; timer.start();
+    ellipseCartesianLogs.clear();
+    QVector<QPoint> points;
+    if (rx == 0 || ry == 0) { points.append(QPoint(0,0)); time = timer.nsecsElapsed(); return points; }
+    
+    // Evaluate y = ry * sqrt(1 - x^2 / rx^2)
+    for (int x = 0; x <= rx; ++x) {
+        double inner = 1.0 - (double)(x * x) / (rx * rx);
+        if (inner < 0) inner = 0;
+        int y = qRound(ry * qSqrt(inner));
+        points.append(QPoint(x, y));
+        ellipseCartesianLogs.append(QString("Cartesian: X=%1 | Evaluated Y=%2").arg(x).arg(y));
+    }
+    // Note: Cartesian often has gaps where slope > 1, but we plot purely to show this artifact!
+    time = timer.nsecsElapsed();
+    return points;
+}
+
+void MainWindow::calculateEllipseAlgorithms()
+{
+    if (!hasEllipseCenter || !hasEllipseRx || !hasEllipseRy) return;
+    
+    ellipsePolarPoints = calculateEllipsePolar(ellipseCenter, ellipseRx, ellipseRy, ellipsePolarTime);
+    ellipseMidpointPoints = calculateEllipseMidpoint(ellipseCenter, ellipseRx, ellipseRy, ellipseMidpointTime);
+    ellipseCartesianPoints = calculateEllipseCartesian(ellipseCenter, ellipseRx, ellipseRy, ellipseCartesianTime);
+
+    QSet<QPoint> polarSet(ellipsePolarPoints.begin(), ellipsePolarPoints.end());
+    QSet<QPoint> midSet(ellipseMidpointPoints.begin(), ellipseMidpointPoints.end());
+    QSet<QPoint> cartSet(ellipseCartesianPoints.begin(), ellipseCartesianPoints.end());
+
+    ui->lblEllipsePolarTime->setText("Polar Time: " + formattime(ellipsePolarTime));
+    ui->lblEllipseMidpointTime->setText("Midpoint Time: " + formattime(ellipseMidpointTime));
+    ui->lblEllipseCartesianTime->setText("Cartesian Time: " + formattime(ellipseCartesianTime));
+    
+    ui->lblEllipsePolarCount->setText("Polar Pixels (1 Quad): " + QString::number(polarSet.size()));
+    ui->lblEllipseMidpointCount->setText("Midpoint Pixels (1 Quad): " + QString::number(midSet.size()));
+    ui->lblEllipseCartesianCount->setText("Cartesian Pixels (1 Quad): " + QString::number(cartSet.size()));
+
+    if (ellipseMidpointTime > 0) {
+        double ratio = (double)ellipsePolarTime / (double)ellipseMidpointTime;
+        ui->lblEllipseCompare->setText(QString("Efficiency: Bresenham %1x Faster!").arg(ratio, 0, 'f', 2));
+    } else {
+        ui->lblEllipseCompare->setText("Efficiency: N/A");
+    }
+    
+    // Ramanujan's Approximation & Area
+    double a = ellipseRx;
+    double b = ellipseRy;
+    double area = M_PI * a * b;
+    double h = ((a - b) * (a - b)) / ((a + b) * (a + b));
+    double perimeter = M_PI * (a + b) * (1 + (3 * h) / (10 + qSqrt(4 - 3 * h)));
+    
+    ui->lblEllipseArea->setText(QString("Area: %1 px²").arg(area, 0, 'f', 1));
+    ui->lblEllipsePerimeter->setText(QString("Perimeter (Ramanujan): %1 px").arg(perimeter, 0, 'f', 1));
+}
+
+void MainWindow::drawEllipseSymmetry(QPainter &painter, const QVector<QPoint> &points, const QColor &color, QPoint center, int rx, int ry, int rotation, int thickness, bool addToBuffer, bool regionHighlight)
+{
+    int xc = center.x();
+    int yc = center.y();
+    long long rx2 = (long long)rx * rx;
+    long long ry2 = (long long)ry * ry;
+    
+    double rad = rotation * M_PI / 180.0;
+    double cos_a = qCos(rad);
+    double sin_a = qSin(rad);
+
+    for (const QPoint &p : points) {
+        int x = p.x();
+        int y = p.y();
+        
+        QColor drawCol = color;
+        if (!regionHighlight && !ellipseQuadColors) {
+            double angle = qAtan2(y, x);
+            int hueOffset = qRound(angle * 180 / M_PI);
+            drawCol = QColor::fromHsv((color.hue() + hueOffset) % 360, color.saturation(), color.value());
+        }
+        if (regionHighlight) {
+            if (2 * ry2 * x < 2 * rx2 * y) drawCol = QColor(187, 154, 247);
+            else drawCol = QColor(224, 175, 104);
+        }
+        
+        QVector<QPoint> rel_points = { QPoint(x, y), QPoint(-x, y), QPoint(-x, -y), QPoint(x, -y) };
+        QVector<QColor> base_cols = { drawCol, drawCol, drawCol, drawCol };
+        if (ellipseQuadColors) {
+            base_cols = { QColor(122, 162, 247), QColor(187, 154, 247), QColor(247, 118, 142), QColor(115, 218, 202) };
+        }
+        
+        for (int i=0; i<4; i++) {
+            QPoint rp = rel_points[i];
+            int rot_x = qRound(rp.x() * cos_a - rp.y() * sin_a);
+            int rot_y = qRound(rp.x() * sin_a + rp.y() * cos_a);
+            QPoint final_p = QPoint(xc + rot_x, yc + rot_y);
+            
+            // Draw thickness
+            int half_t = thickness / 2;
+            for (int dx = -half_t; dx <= half_t; dx++) {
+                for (int dy = -half_t; dy <= half_t; dy++) {
+                    QPoint thick_p = QPoint(final_p.x() + dx, final_p.y() + dy);
+                    if (addToBuffer) {
+                        if (!pixelBuffer[thick_p].contains(base_cols[i])) pixelBuffer[thick_p].append(base_cols[i]);
+                    } else {
+                        drawpoint(painter, thick_p, base_cols[i]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void MainWindow::on_btnDrawEllipse_clicked() {
+    if (!hasEllipseCenter) {
+        ellipseCenter = QPoint(0, 0); hasEllipseCenter = true;
+        ui->comboEllipsePoint->setItemText(0, "Center : (0, 0)");
+    }
+    if (!hasEllipseRx) {
+        ellipseRx = ui->spinBoxRx->value(); if (ellipseRx == 0) ellipseRx = 5;
+        hasEllipseRx = true; ui->comboEllipsePoint->setItemText(1, "Radius X : " + QString::number(ellipseRx));
+        ui->spinBoxRx->setValue(ellipseRx);
+    }
+    if (!hasEllipseRy) {
+        ellipseRy = ui->spinBoxRy->value(); if (ellipseRy == 0) ellipseRy = 5;
+        hasEllipseRy = true; ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
+        ui->spinBoxRy->setValue(ellipseRy);
+    }
+    calculateEllipseAlgorithms();
+    ellipseVisible = true;
+    ellipseAnimationStep = -1;
+    if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    drawgrid();
+    statusBar()->showMessage("Ellipse drawn instantly.");
+}
+
+void MainWindow::on_btnAnimateEllipse_clicked() {
+    if (!hasEllipseCenter) {
+        ellipseCenter = QPoint(0, 0); hasEllipseCenter = true;
+        ui->comboEllipsePoint->setItemText(0, "Center : (0, 0)");
+    }
+    if (!hasEllipseRx) {
+        ellipseRx = ui->spinBoxRx->value(); if (ellipseRx == 0) ellipseRx = 5;
+        hasEllipseRx = true; ui->comboEllipsePoint->setItemText(1, "Radius X : " + QString::number(ellipseRx));
+        ui->spinBoxRx->setValue(ellipseRx);
+    }
+    if (!hasEllipseRy) {
+        ellipseRy = ui->spinBoxRy->value(); if (ellipseRy == 0) ellipseRy = 5;
+        hasEllipseRy = true; ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
+        ui->spinBoxRy->setValue(ellipseRy);
+    }
+    calculateEllipseAlgorithms();
+    ellipseVisible = true;
+    ui->textDebugger->clear();
+    
+    if (selectedEllipseAlgorithm == 0) { ellipseAnimationPoints = ellipsePolarPoints; ellipseAnimationLogs = ellipsePolarLogs; ui->textDebugger->append("Starting Polar Ellipse..."); }
+    else if (selectedEllipseAlgorithm == 2) { ellipseAnimationPoints = ellipseCartesianPoints; ellipseAnimationLogs = ellipseCartesianLogs; ui->textDebugger->append("Starting Cartesian Ellipse..."); }
+    else { ellipseAnimationPoints = ellipseMidpointPoints; ellipseAnimationLogs = ellipseMidpointLogs; ui->textDebugger->append("Starting Midpoint (Bresenham) Ellipse..."); }
+    
+    ellipseAnimationStep = 0;
+    int interval = qRound(30 / animationSpeedMultiplier);
+    if (interval < 1) interval = 1;
+    ellipseAnimationTimer->start(interval);
+    statusBar()->showMessage("Animating Ellipse 4-Way Symmetry...");
+}
+
+void MainWindow::animateEllipseStep() {
+    if (ellipseAnimationStep >= ellipseAnimationPoints.size()) {
+        ellipseAnimationTimer->stop(); statusBar()->showMessage("Animation Complete."); return;
+    }
+    if (ellipseAnimationStep < ellipseAnimationLogs.size()) {
+        ui->textDebugger->append(ellipseAnimationLogs[ellipseAnimationStep]);
+    }
+    
+    // Draw the glowing head explicitly directly on the painter bypassing drawgrid for immediate flash
+    if (ellipseAnimationStep < ellipseAnimationPoints.size()) {
+        QPoint p = ellipseAnimationPoints[ellipseAnimationStep];
+        QPixmap pix = ui->frame->pixmap();
+        QPainter painter(&pix);
+        drawEllipseSymmetry(painter, {p}, QColor(255, 255, 255), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, false);
+        ui->frame->setPixmap(pix);
+        ui->frame->update();
+    }
+    
+    ellipseAnimationStep++;
+    drawgrid();
+}
+
+void MainWindow::on_btnClearEllipse_clicked() {
+    hasEllipseCenter = false; hasEllipseRx = false; hasEllipseRy = false; ellipseVisible = false;
+    ellipseAnimationStep = -1; if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    ellipsePolarPoints.clear(); ellipseMidpointPoints.clear(); ellipseCartesianPoints.clear();
+    ui->comboEllipsePoint->setItemText(0, "Select Center"); ui->comboEllipsePoint->setItemText(1, "Select Radius X"); ui->comboEllipsePoint->setItemText(2, "Select Radius Y");
+    ui->lblEllipsePolarTime->setText("Polar Time: -"); ui->lblEllipseMidpointTime->setText("Midpoint Time: -"); ui->lblEllipseCartesianTime->setText("Cartesian Time: -");
+    ui->lblEllipsePolarCount->setText("Polar Pixels: -"); ui->lblEllipseMidpointCount->setText("Midpoint Pixels: -"); ui->lblEllipseCartesianCount->setText("Cartesian Pixels: -");
+    ui->lblEllipseCompare->setText("Efficiency: -");
+    ui->spinBoxRx->blockSignals(true); ui->spinBoxRx->setValue(0); ui->spinBoxRx->blockSignals(false);
+    ui->spinBoxRy->blockSignals(true); ui->spinBoxRy->setValue(0); ui->spinBoxRy->blockSignals(false);
+    drawgrid(); statusBar()->showMessage("Ellipse cleared.");
+}
+
+void MainWindow::on_comboEllipseAlgo_currentIndexChanged(int index) {
+    selectedEllipseAlgorithm = index; ellipseAnimationStep = -1;
+    if (hasEllipseCenter && hasEllipseRx && hasEllipseRy) calculateEllipseAlgorithms();
+    drawgrid();
+}
+
+void MainWindow::on_comboEllipsePoint_currentIndexChanged(int index) { Q_UNUSED(index); }
+
+void MainWindow::on_spinBoxRx_valueChanged(int arg1) {
+    if (hasEllipseCenter) {
+        ellipseRx = arg1; hasEllipseRx = true;
+        ui->comboEllipsePoint->setItemText(1, "Radius X : " + QString::number(ellipseRx));
+        if (hasEllipseRy) { ellipseVisible = true; calculateEllipseAlgorithms(); }
+        drawgrid();
+    }
+}
+
+void MainWindow::on_spinBoxRy_valueChanged(int arg1) {
+    if (hasEllipseCenter) {
+        ellipseRy = arg1; hasEllipseRy = true;
+        ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
+        if (hasEllipseRx) { ellipseVisible = true; calculateEllipseAlgorithms(); }
+        drawgrid();
+    }
+}
+
+void MainWindow::on_chkQuadColors_stateChanged(int arg1) { ellipseQuadColors = (arg1 == Qt::Checked); drawgrid(); }
+void MainWindow::on_chkRegionSplit_stateChanged(int arg1) { ellipseRegionSplit = (arg1 == Qt::Checked); drawgrid(); }
+
+void MainWindow::on_sliderRotation_valueChanged(int value) {
+    ellipseRotation = value;
+    if (hasEllipseCenter && hasEllipseRx && hasEllipseRy) calculateEllipseAlgorithms();
+    drawgrid();
+}
+
+void MainWindow::on_sliderThickness_valueChanged(int value) {
+    ellipseThickness = value;
+    drawgrid();
+}
+
+void MainWindow::on_btnClearCanvas_clicked() {
+    persistentEllipses.clear();
+    drawgrid();
+}
+
+void MainWindow::on_btnCommitEllipse_clicked() {
+    if (!hasEllipseCenter || !hasEllipseRx || !hasEllipseRy) return;
+    PersistentEllipse pe;
+    pe.center = ellipseCenter;
+    pe.rx = ellipseRx;
+    pe.ry = ellipseRy;
+    pe.rotation = ellipseRotation;
+    pe.thickness = ellipseThickness;
+    pe.algorithm = selectedEllipseAlgorithm;
+    if (selectedEllipseAlgorithm == 0) pe.color = QColor(255, 0, 127, 100);
+    else if (selectedEllipseAlgorithm == 1) pe.color = QColor(0, 245, 212, 100);
+    else if (selectedEllipseAlgorithm == 2) pe.color = QColor(56, 189, 248, 100);
+    else pe.color = QColor(200, 200, 200, 80);
+    persistentEllipses.append(pe);
+    
+    hasEllipseCenter = false; hasEllipseRx = false; hasEllipseRy = false;
+    ellipseVisible = false;
+    ui->comboEllipsePoint->setItemText(0, "Select Center");
+    ui->comboEllipsePoint->setItemText(1, "Select Radius X");
+    ui->comboEllipsePoint->setItemText(2, "Select Radius Y");
+    ui->spinBoxRx->setValue(0);
+    ui->spinBoxRy->setValue(0);
+    statusBar()->showMessage(QString("Ellipse saved! Canvas now has %1 ellipses.").arg(persistentEllipses.size()));
+    drawgrid();
 }

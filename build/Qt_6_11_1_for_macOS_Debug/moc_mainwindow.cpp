@@ -65,7 +65,21 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         "on_comboCircleAlgo_currentIndexChanged",
         "on_comboCirclePoint_currentIndexChanged",
         "on_spinBoxRadius_valueChanged",
-        "on_btnClearCircle_clicked"
+        "on_btnClearCircle_clicked",
+        "on_btnDrawEllipse_clicked",
+        "on_btnAnimateEllipse_clicked",
+        "animateEllipseStep",
+        "on_btnClearEllipse_clicked",
+        "on_comboEllipseAlgo_currentIndexChanged",
+        "on_comboEllipsePoint_currentIndexChanged",
+        "on_spinBoxRx_valueChanged",
+        "on_spinBoxRy_valueChanged",
+        "on_chkQuadColors_stateChanged",
+        "on_chkRegionSplit_stateChanged",
+        "on_btnCommitEllipse_clicked",
+        "on_btnClearCanvas_clicked",
+        "on_sliderRotation_valueChanged",
+        "on_sliderThickness_valueChanged"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -131,6 +145,50 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         }}),
         // Slot 'on_btnClearCircle_clicked'
         QtMocHelpers::SlotData<void()>(27, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_btnDrawEllipse_clicked'
+        QtMocHelpers::SlotData<void()>(28, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_btnAnimateEllipse_clicked'
+        QtMocHelpers::SlotData<void()>(29, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'animateEllipseStep'
+        QtMocHelpers::SlotData<void()>(30, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_btnClearEllipse_clicked'
+        QtMocHelpers::SlotData<void()>(31, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_comboEllipseAlgo_currentIndexChanged'
+        QtMocHelpers::SlotData<void(int)>(32, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 22 },
+        }}),
+        // Slot 'on_comboEllipsePoint_currentIndexChanged'
+        QtMocHelpers::SlotData<void(int)>(33, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 22 },
+        }}),
+        // Slot 'on_spinBoxRx_valueChanged'
+        QtMocHelpers::SlotData<void(int)>(34, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 15 },
+        }}),
+        // Slot 'on_spinBoxRy_valueChanged'
+        QtMocHelpers::SlotData<void(int)>(35, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 15 },
+        }}),
+        // Slot 'on_chkQuadColors_stateChanged'
+        QtMocHelpers::SlotData<void(int)>(36, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 15 },
+        }}),
+        // Slot 'on_chkRegionSplit_stateChanged'
+        QtMocHelpers::SlotData<void(int)>(37, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 15 },
+        }}),
+        // Slot 'on_btnCommitEllipse_clicked'
+        QtMocHelpers::SlotData<void()>(38, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_btnClearCanvas_clicked'
+        QtMocHelpers::SlotData<void()>(39, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'on_sliderRotation_valueChanged'
+        QtMocHelpers::SlotData<void(int)>(40, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 18 },
+        }}),
+        // Slot 'on_sliderThickness_valueChanged'
+        QtMocHelpers::SlotData<void(int)>(41, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 18 },
+        }}),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -174,6 +232,20 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 17: _t->on_comboCirclePoint_currentIndexChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
         case 18: _t->on_spinBoxRadius_valueChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
         case 19: _t->on_btnClearCircle_clicked(); break;
+        case 20: _t->on_btnDrawEllipse_clicked(); break;
+        case 21: _t->on_btnAnimateEllipse_clicked(); break;
+        case 22: _t->animateEllipseStep(); break;
+        case 23: _t->on_btnClearEllipse_clicked(); break;
+        case 24: _t->on_comboEllipseAlgo_currentIndexChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 25: _t->on_comboEllipsePoint_currentIndexChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 26: _t->on_spinBoxRx_valueChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 27: _t->on_spinBoxRy_valueChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 28: _t->on_chkQuadColors_stateChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 29: _t->on_chkRegionSplit_stateChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 30: _t->on_btnCommitEllipse_clicked(); break;
+        case 31: _t->on_btnClearCanvas_clicked(); break;
+        case 32: _t->on_sliderRotation_valueChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 33: _t->on_sliderThickness_valueChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
         default: ;
         }
     }
@@ -198,14 +270,14 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 20)
+        if (_id < 34)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 20;
+        _id -= 34;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 20)
+        if (_id < 34)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 20;
+        _id -= 34;
     }
     return _id;
 }

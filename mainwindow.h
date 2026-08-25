@@ -54,6 +54,22 @@ private slots:
     void on_spinBoxRadius_valueChanged(int arg1);
     void on_btnClearCircle_clicked();
 
+    void on_btnDrawEllipse_clicked();
+    void on_btnAnimateEllipse_clicked();
+    void animateEllipseStep();
+    void on_btnClearEllipse_clicked();
+    void on_comboEllipseAlgo_currentIndexChanged(int index);
+    void on_comboEllipsePoint_currentIndexChanged(int index);
+    void on_spinBoxRx_valueChanged(int arg1);
+    void on_spinBoxRy_valueChanged(int arg1);
+    void on_chkQuadColors_stateChanged(int arg1);
+    void on_chkRegionSplit_stateChanged(int arg1);
+    
+    void on_btnCommitEllipse_clicked();
+    void on_btnClearCanvas_clicked();
+    void on_sliderRotation_valueChanged(int value);
+    void on_sliderThickness_valueChanged(int value);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
@@ -76,6 +92,11 @@ private:
     QVector<QPoint> calculateCircleMidpoint(QPoint center, int radius, qint64 &time);
     QVector<QPoint> calculateCircleCartesian(QPoint center, int radius, qint64 &time);
 
+    void drawEllipseSymmetry(QPainter &painter, const QVector<QPoint> &points, const QColor &color, QPoint center, int rx, int ry, int rotation, int thickness, bool addToBuffer = false, bool regionHighlight = false);
+    QVector<QPoint> calculateEllipsePolar(QPoint center, int rx, int ry, qint64 &time);
+    QVector<QPoint> calculateEllipseMidpoint(QPoint center, int rx, int ry, qint64 &time);
+    QVector<QPoint> calculateEllipseCartesian(QPoint center, int rx, int ry, qint64 &time);
+
     QPoint screentological(const QPoint &pos) const;
     QPoint logicaltoscreen(const QPoint &pos) const;
     bool nearpoint(const QPoint &logical, const QPoint &target) const;
@@ -83,6 +104,7 @@ private:
     QString formattime(qint64 nanoseconds) const;
     void calculatealgorithms();
     void calculateCircleAlgorithms();
+    void calculateEllipseAlgorithms();
 
     QPoint point1;
     QPoint point2;
@@ -125,6 +147,51 @@ private:
     int animationStep;
     QVector<QPoint> animationPoints;
     QVector<QString> animationLogs;
+
+    QPoint ellipseCenter;
+    int ellipseRx;
+    int ellipseRy;
+    bool hasEllipseCenter;
+    bool hasEllipseRx;
+    bool hasEllipseRy;
+    bool ellipseVisible;
+    int ellipseDraggingPoint;
+
+    QVector<QPoint> ellipsePolarPoints;
+    QVector<QPoint> ellipseMidpointPoints;
+    QVector<QPoint> ellipseCartesianPoints;
+    QVector<QString> ellipsePolarLogs;
+    QVector<QString> ellipseMidpointLogs;
+    QVector<QString> ellipseCartesianLogs;
+
+    qint64 ellipsePolarTime;
+    qint64 ellipseMidpointTime;
+    qint64 ellipseCartesianTime;
+
+    int selectedEllipseAlgorithm;
+    
+    QTimer *ellipseAnimationTimer;
+    int ellipseAnimationStep;
+    QVector<QPoint> ellipseAnimationPoints;
+    QVector<QString> ellipseAnimationLogs;
+    QColor ellipseAnimationColor;
+    
+    bool ellipseQuadColors;
+    bool ellipseRegionSplit;
+    
+    int ellipseRotation;
+    int ellipseThickness;
+    
+    struct PersistentEllipse {
+        QPoint center;
+        int rx;
+        int ry;
+        int rotation;
+        int thickness;
+        int algorithm;
+        QColor color;
+    };
+    QVector<PersistentEllipse> persistentEllipses;
 
     QHash<QPoint, QList<QColor>> pixelBuffer;
     
