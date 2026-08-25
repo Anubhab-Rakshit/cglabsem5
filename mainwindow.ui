@@ -1,0 +1,774 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1100</width>
+    <height>750</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Computer Graphics Lab</string>
+  </property>
+  <property name="styleSheet">
+   <string>
+QMainWindow {
+    background-color: #1e1e2e;
+    color: #ffffff;
+    font-size: 14px;
+}
+* {
+    color: #ffffff;
+    font-size: 14px;
+}
+QGroupBox {
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    margin-top: 2ex;
+    font-weight: bold;
+    color: #ffffff;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 5px;
+    left: 10px;
+    color: #89b4fa;
+}
+QPushButton {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 8px 16px;
+    color: #ffffff;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #45475a;
+    border: 1px solid #89b4fa;
+}
+QPushButton:pressed {
+    background-color: #585b70;
+}
+QComboBox, QSpinBox {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 8px;
+    color: #ffffff;
+}
+QLabel {
+    color: #ffffff;
+}
+QTabWidget::pane {
+    border: 1px solid #45475a;
+    border-radius: 8px;
+    background-color: #1e1e2e;
+}
+QTabBar::tab {
+    background-color: #313244;
+    border: 1px solid #45475a;
+    padding: 10px 25px;
+    margin-right: 4px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    color: #ffffff;
+}
+QTabBar::tab:selected {
+    background-color: #89b4fa;
+    color: #11111b;
+    font-weight: bold;
+}
+QTextBrowser {
+    background-color: #11111b;
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 8px;
+    color: #a6e3a1;
+}
+   </string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <property name="leftMargin">
+     <number>20</number>
+    </property>
+    <property name="topMargin">
+     <number>20</number>
+    </property>
+    <property name="rightMargin">
+     <number>20</number>
+    </property>
+    <property name="bottomMargin">
+     <number>20</number>
+    </property>
+    <property name="spacing">
+     <number>20</number>
+    </property>
+    <item>
+     <widget class="my_label" name="frame">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>1</horstretch>
+        <verstretch>1</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>600</width>
+        <height>600</height>
+       </size>
+      </property>
+      <property name="frameShape">
+       <enum>QFrame::Box</enum>
+      </property>
+      <property name="text">
+       <string/>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <layout class="QVBoxLayout" name="verticalLayoutControls">
+      <property name="spacing">
+       <number>15</number>
+      </property>
+      <property name="sizeConstraint">
+       <enum>QLayout::SetFixedSize</enum>
+      </property>
+      <item>
+       <widget class="QGroupBox" name="groupBoxGlobal">
+        <property name="title">
+         <string>Global Settings</string>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutGlobal">
+         <property name="leftMargin">
+          <number>15</number>
+         </property>
+         <property name="topMargin">
+          <number>15</number>
+         </property>
+         <property name="rightMargin">
+          <number>15</number>
+         </property>
+         <property name="bottomMargin">
+          <number>15</number>
+         </property>
+         <property name="spacing">
+          <number>15</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="labelGrid">
+           <property name="text">
+            <string>Grid:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="spinBox">
+           <property name="minimum">
+            <number>5</number>
+           </property>
+           <property name="value">
+            <number>15</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="lblSpeed">
+           <property name="text">
+            <string>Speed: 1.0x</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSlider" name="sliderSpeed">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="minimum">
+            <number>1</number>
+           </property>
+           <property name="maximum">
+            <number>20</number>
+           </property>
+           <property name="value">
+            <number>10</number>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTabWidget" name="tabWidget">
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>350</width>
+          <height>500</height>
+         </size>
+        </property>
+        <widget class="QWidget" name="tabLine">
+         <attribute name="title">
+          <string>Line Drawing</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="verticalLayoutLine">
+          <property name="leftMargin">
+           <number>15</number>
+          </property>
+          <property name="topMargin">
+           <number>15</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>15</number>
+          </property>
+          <property name="spacing">
+           <number>15</number>
+          </property>
+          <item>
+           <widget class="QGroupBox" name="groupBoxLineAlgo">
+            <property name="title">
+             <string>Algorithm Selection</string>
+            </property>
+            <layout class="QVBoxLayout" name="vboxLineAlgo">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <item>
+              <widget class="QComboBox" name="comboLineAlgo">
+               <item>
+                <property name="text">
+                 <string>DDA Algorithm</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Bresenham Algorithm</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>All (Overlap)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBoxLineControls">
+            <property name="title">
+             <string>Controls</string>
+            </property>
+            <layout class="QHBoxLayout" name="hboxLineControls">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <item>
+              <widget class="QComboBox" name="comboLinePoint">
+               <item>
+                <property name="text">
+                 <string>Select Point 1</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Select Point 2</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+           <item>
+            <widget class="QGroupBox" name="groupBoxLinePerf">
+             <property name="title">
+              <string>Performance</string>
+             </property>
+             <layout class="QVBoxLayout" name="vboxLinePerfOuter">
+              <property name="leftMargin"><number>5</number></property>
+              <property name="topMargin"><number>10</number></property>
+              <property name="rightMargin"><number>5</number></property>
+              <property name="bottomMargin"><number>5</number></property>
+              <item>
+               <widget class="QScrollArea" name="scrollAreaLinePerf">
+                <property name="widgetResizable">
+                 <bool>true</bool>
+                </property>
+                <property name="frameShape">
+                 <enum>QFrame::NoFrame</enum>
+                </property>
+                <widget class="QWidget" name="scrollAreaWidgetContentsLine">
+                 <layout class="QVBoxLayout" name="vboxLinePerf">
+             <property name="spacing">
+              <number>10</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="dda_time_label">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                 <string>DDA Time: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblDdaCount">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="text">
+                 <string>DDA Pixels: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="bresenham_time_label">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                 <string>Bresenham Time: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblBresenhamCount">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="text">
+                 <string>Bresenham Pixels: -</string>
+               </property>
+              </widget>
+             </item>
+                </layout>
+               </widget>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBoxLineActions">
+            <property name="title">
+             <string>Actions</string>
+            </property>
+            <layout class="QGridLayout" name="gridLineActions">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <property name="spacing">
+              <number>10</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QPushButton" name="clear">
+               <property name="text">
+                <string>Clear Line</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QPushButton" name="btnAnimateLine">
+               <property name="text">
+                <string>Animate Line</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0" colspan="2">
+              <widget class="QPushButton" name="draw_line">
+               <property name="text">
+                <string>Draw Instantly</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacerLine">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+        <widget class="QWidget" name="tabCircle">
+         <attribute name="title">
+          <string>Circle Drawing</string>
+         </attribute>
+         <layout class="QVBoxLayout" name="verticalLayoutCircle">
+          <property name="leftMargin">
+           <number>15</number>
+          </property>
+          <property name="topMargin">
+           <number>15</number>
+          </property>
+          <property name="rightMargin">
+           <number>15</number>
+          </property>
+          <property name="bottomMargin">
+           <number>15</number>
+          </property>
+          <property name="spacing">
+           <number>15</number>
+          </property>
+          <item>
+           <widget class="QGroupBox" name="groupBoxCircleAlgo">
+            <property name="title">
+             <string>Algorithm Selection</string>
+            </property>
+            <layout class="QVBoxLayout" name="vboxCircleAlgo">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <item>
+              <widget class="QComboBox" name="comboCircleAlgo">
+               <item>
+                <property name="text">
+                 <string>Polar Algorithm</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Midpoint (Bresenham) Algorithm</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Cartesian Algorithm</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>All (Overlap)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBoxCircleControls">
+            <property name="title">
+             <string>Controls</string>
+            </property>
+            <layout class="QGridLayout" name="gridCircleControls">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <property name="horizontalSpacing">
+              <number>15</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>15</number>
+             </property>
+             <item row="0" column="0" colspan="2">
+              <widget class="QComboBox" name="comboCirclePoint">
+               <item>
+                <property name="text">
+                 <string>Select Center (Pt 1)</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>Select Radius (Pt 2)</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="labelRadius">
+               <property name="text">
+                <string>Radius:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QSpinBox" name="spinBoxRadius">
+               <property name="maximum">
+                <number>1000</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+           <item>
+            <widget class="QGroupBox" name="groupBoxCirclePerf">
+             <property name="title">
+              <string>Performance</string>
+             </property>
+             <layout class="QVBoxLayout" name="vboxCirclePerfOuter">
+              <property name="leftMargin"><number>5</number></property>
+              <property name="topMargin"><number>10</number></property>
+              <property name="rightMargin"><number>5</number></property>
+              <property name="bottomMargin"><number>5</number></property>
+              <item>
+               <widget class="QScrollArea" name="scrollAreaCirclePerf">
+                <property name="widgetResizable">
+                 <bool>true</bool>
+                </property>
+                <property name="frameShape">
+                 <enum>QFrame::NoFrame</enum>
+                </property>
+                <widget class="QWidget" name="scrollAreaWidgetContentsCircle">
+                 <layout class="QVBoxLayout" name="vboxCirclePerf">
+             <property name="spacing">
+              <number>10</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="lblPolarTime">
+               <property name="font">
+                <font>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>Polar Time: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblPolarCount">
+               <property name="text">
+                <string>Polar Pixels: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblMidpointTime">
+               <property name="font">
+                <font>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>Midpoint Time: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblMidpointCount">
+               <property name="text">
+                <string>Midpoint Pixels: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblCartesianTime">
+               <property name="font">
+                <font>
+                 <weight>75</weight>
+                 <bold>true</bold>
+                </font>
+               </property>
+               <property name="text">
+                <string>Cartesian Time: -</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="lblCartesianCount">
+               <property name="text">
+                <string>Cartesian Pixels: -</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+          <item>
+           <widget class="QGroupBox" name="groupBoxCircleActions">
+            <property name="title">
+             <string>Actions</string>
+            </property>
+            <layout class="QHBoxLayout" name="hboxCircleActions">
+             <property name="leftMargin">
+              <number>15</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>15</number>
+             </property>
+             <property name="bottomMargin">
+              <number>15</number>
+             </property>
+             <property name="spacing">
+              <number>15</number>
+             </property>
+             <item>
+              <widget class="QPushButton" name="btnClearCircle">
+               <property name="text">
+                <string>Clear Circle</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="btnAnimateCircle">
+               <property name="text">
+                <string>Animate Symmetry</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacerCircle">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxDebugger">
+        <property name="title">
+         <string>Algorithm State Debugger</string>
+        </property>
+        <layout class="QVBoxLayout" name="vboxDebugger">
+         <property name="leftMargin">
+          <number>10</number>
+         </property>
+         <property name="topMargin">
+          <number>15</number>
+         </property>
+         <property name="rightMargin">
+          <number>10</number>
+         </property>
+         <property name="bottomMargin">
+          <number>10</number>
+         </property>
+         <item>
+          <widget class="QTextBrowser" name="textDebugger">
+           <property name="maximumHeight">
+            <number>150</number>
+           </property>
+           <property name="placeholderText">
+            <string>Awaiting animation to trace algorithm state...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1100</width>
+     <height>24</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>my_label</class>
+   <extends>QLabel</extends>
+   <header location="global">my_label.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
