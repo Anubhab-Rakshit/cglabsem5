@@ -144,10 +144,12 @@ MainWindow::MainWindow(QWidget *parent)
     
     QPushButton* btnPolygonClear = new QPushButton("Clear Polygon", pagePolygon);
     QPushButton* btnPolygonClose = new QPushButton("Close Polygon", pagePolygon);
+    QPushButton* btnPolygonColor = new QPushButton("Polygon Color", pagePolygon);
     QPushButton* btnFillColor = new QPushButton("Fill Color", pagePolygon);
     QPushButton* btnBoundaryColor = new QPushButton("Boundary Color", pagePolygon);
     
     lPolygon->addWidget(comboPolygonMode);
+    lPolygon->addWidget(btnPolygonColor);
     lPolygon->addWidget(btnPolygonClear);
     lPolygon->addWidget(btnPolygonClose);
     lPolygon->addWidget(btnFillColor);
@@ -185,6 +187,10 @@ MainWindow::MainWindow(QWidget *parent)
     
     connect(btnPolygonClear, &QPushButton::clicked, this, &MainWindow::handlePolygonClearClicked);
     connect(btnPolygonClose, &QPushButton::clicked, this, &MainWindow::handlePolygonCloseClicked);
+    connect(btnPolygonColor, &QPushButton::clicked, this, [this]() {
+        QColor color = QColorDialog::getColor(polygonFillColor, this, "Select Polygon Edge Color");
+        if (color.isValid()) polygonFillColor = color;
+    });
     connect(btnFillColor, &QPushButton::clicked, this, &MainWindow::handleFillColorClicked);
     connect(btnBoundaryColor, &QPushButton::clicked, this, &MainWindow::handleBoundaryColorClicked);
     
@@ -1700,10 +1706,7 @@ void MainWindow::handlePolygonCloseClicked() {
     if(activePolygonPoints.size() >= 3) {
         polygonClosed = true;
         committedPolygonPixels.clear();
-        // Commit only the polygon BOUNDARY (edges) to the pixel buffer.
-        // The interior is left empty so Flood/Boundary Fill can later fill it
-        // up to this closed edge. Auto-filling here would pre-occupy the
-        // interior and make the fill tools appear to fill the whole grid.
+        // Commit the polygon boundary edges to the pixel buffer.
         qint64 dummyTime = 0;
         for (int i = 0; i < activePolygonPoints.size(); ++i) {
             QPoint p1 = activePolygonPoints[i];
@@ -1716,6 +1719,25 @@ void MainWindow::handlePolygonCloseClicked() {
                 }
             }
         }
+        // Thicken the boundary to 2 pixels wide by also committing the
+        // 4-connected neighbors of every edge pixel.  A 1-pixel-thick
+        // diagonal line has single-cell gaps that a BFS fill can leak
+        // through; a 2-pixel-thick band eliminates all such gaps so
+        // flood / boundary fill stays contained.
+        QVector<QPoint> extra;
+        for (const QPoint &p : committedPolygonPixels) {
+            QPoint neighbors[4] = {
+                QPoint(p.x()+1, p.y()), QPoint(p.x()-1, p.y()),
+                QPoint(p.x(), p.y()+1), QPoint(p.x(), p.y()-1)
+            };
+            for (const QPoint &n : neighbors) {
+                if (!pixelBuffer[n].contains(polygonFillColor)) {
+                    pixelBuffer[n].append(polygonFillColor);
+                    extra.append(n);
+                }
+            }
+        }
+        committedPolygonPixels.append(extra);
         activePolygonPoints.clear();
         polygonClosed = false;
         drawgrid();
@@ -1750,18 +1772,22 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
 
     if (!startMatches) return;
 
-    // Bound the search to the full visible grid so closed regions of any
-    // size can be filled. The grid spans the canvas centered on the origin.
     int maxX = originx / gridsize + 1;
     int maxY = originy / gridsize + 1;
     int minX = -maxX;
     int minY = -maxY;
+
+    // Safety cap: never fill more than this many cells. Prevents the app
+    // from freezing if the user clicks outside a closed boundary (the fill
+    // would otherwise spread across the entire background grid).
+    const int maxFillCells = 5000;
 
     QQueue<QPoint> queue;
     queue.enqueue(startNode);
     QSet<QPoint> visited;
 
     while (!queue.isEmpty()) {
+        if (visited.size() >= maxFillCells) break;
         QPoint p = queue.dequeue();
         if (visited.contains(p)) continue;
         if (p.x() < minX || p.x() > maxX || p.y() < minY || p.y() > maxY) continue;
@@ -1775,16 +1801,13 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
 
         if (matches) {
             visited.insert(p);
-            // Stop here permanently once this pixel becomes a boundary for later neighbors.
             pixelBuffer[p].clear();
             pixelBuffer[p].append(replacementColor);
 
-            // 8-connectivity: also step diagonally so the fill keys tightly
-            // onto the closed rim and does not leak through a single-cell gap.
-            for (int dx = -1; dx <= 1; ++dx)
-                for (int dy = -1; dy <= 1; ++dy)
-                    if (dx || dy)
-                        queue.enqueue(QPoint(p.x() + dx, p.y() + dy));
+            queue.enqueue(QPoint(p.x() + 1, p.y()));
+            queue.enqueue(QPoint(p.x() - 1, p.y()));
+            queue.enqueue(QPoint(p.x(), p.y() + 1));
+            queue.enqueue(QPoint(p.x(), p.y() - 1));
         }
     }
 }
@@ -1792,6 +1815,7 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
 void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, const QColor &boundaryColor)
 {
     Q_UNUSED(boundaryColor);
+    // Do not fill if the start point is already the same fill color.
     if (fillColor.isValid() && pixelBuffer.contains(startNode) && pixelBuffer[startNode].contains(fillColor))
         return;
 
@@ -1800,16 +1824,19 @@ void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, 
     int minX = -maxX;
     int minY = -maxY;
 
+    const int maxFillCells = 5000;
+
     QQueue<QPoint> queue;
     queue.enqueue(startNode);
     QSet<QPoint> visited;
 
     while (!queue.isEmpty()) {
+        if (visited.size() >= maxFillCells) break;
         QPoint p = queue.dequeue();
         if (visited.contains(p)) continue;
         if (p.x() < minX || p.x() > maxX || p.y() < minY || p.y() > maxY) continue;
 
-        // Stop at any committed shape edge/color (occupies the buffer), otherwise fill.
+        // Stop at any occupied pixel (a committed shape edge or fill).
         bool isBoundary = pixelBuffer.contains(p);
 
         if (!isBoundary) {
@@ -1817,11 +1844,10 @@ void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, 
             if (!pixelBuffer[p].contains(fillColor))
                 pixelBuffer[p].append(fillColor);
 
-            // 8-connectivity so the fill stops cleanly on the closed rim.
-            for (int dx = -1; dx <= 1; ++dx)
-                for (int dy = -1; dy <= 1; ++dy)
-                    if (dx || dy)
-                        queue.enqueue(QPoint(p.x() + dx, p.y() + dy));
+            queue.enqueue(QPoint(p.x() + 1, p.y()));
+            queue.enqueue(QPoint(p.x() - 1, p.y()));
+            queue.enqueue(QPoint(p.x(), p.y() + 1));
+            queue.enqueue(QPoint(p.x(), p.y() - 1));
         }
     }
 }
