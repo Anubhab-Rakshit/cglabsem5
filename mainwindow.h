@@ -16,6 +16,15 @@
 #include <QHash>
 #include <QList>
 #include <QSet>
+#include <QStackedWidget>
+#include <QToolButton>
+#include <QComboBox>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QFrame>
+#include <QColorDialog>
+#include <QQueue>
+#include <QMessageBox>
 
 namespace Ui {
 class MainWindow;
@@ -69,6 +78,17 @@ private slots:
     void on_btnClearCanvas_clicked();
     void on_sliderRotation_valueChanged(int value);
     void on_sliderThickness_valueChanged(int value);
+    
+    // New Tool Selection Slots
+    void selectTool(int toolIndex);
+    
+    // Polygon / Fill Slots
+    void handlePolygonCloseClicked();
+    void handlePolygonClearClicked();
+    void handleFillColorClicked();
+    void handleBoundaryColorClicked();
+    void handleClearCanvasClicked();
+    void handleToggleNavbar();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -96,6 +116,12 @@ private:
     QVector<QPoint> calculateEllipsePolar(QPoint center, int rx, int ry, qint64 &time);
     QVector<QPoint> calculateEllipseMidpoint(QPoint center, int rx, int ry, qint64 &time);
     QVector<QPoint> calculateEllipseCartesian(QPoint center, int rx, int ry, qint64 &time);
+
+    // New Algorithms
+    void floodFill(const QPoint &startNode, const QColor &targetColor, const QColor &replacementColor);
+    void boundaryFill(const QPoint &startNode, const QColor &fillColor, const QColor &boundaryColor);
+    void scanlineFillPolygon(const QVector<QPoint> &vertices, const QColor &fillColor, QVector<QPoint> *committed = nullptr);
+    void drawPolygonEdges(QPainter &painter, const QVector<QPoint> &vertices, const QColor &color);
 
     QPoint screentological(const QPoint &pos) const;
     QPoint logicaltoscreen(const QPoint &pos) const;
@@ -195,6 +221,25 @@ private:
 
     QHash<QPoint, QList<QColor>> pixelBuffer;
     
+    // Editor UI Architecture State
+    enum ActiveTool { TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE, TOOL_POLYGON, TOOL_FLOOD_FILL, TOOL_BOUNDARY_FILL };
+    ActiveTool currentTool;
+    QStackedWidget *settingsStack;
+    QList<QToolButton*> sidebarButtons;
+    QFrame *navbar;
+    QPushButton *btnToggleNavbar;
+
+    // Polygon State
+    QVector<QPoint> activePolygonPoints;
+    QVector<QPoint> committedPolygonPixels;
+    bool polygonClosed;
+    QColor polygonFillColor;
+
+    // Fill Tool State
+    QColor currentFillColor;
+    QColor currentBoundaryColor;
+    
+    // Legacy Animation logic references...
     float animationSpeedMultiplier;
 
     int gridsize;
