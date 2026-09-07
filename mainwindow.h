@@ -25,6 +25,8 @@
 #include <QColorDialog>
 #include <QQueue>
 #include <QMessageBox>
+#include <QSvgRenderer>
+#include <QScrollArea>
 
 namespace Ui {
 class MainWindow;
@@ -113,6 +115,7 @@ private:
     QVector<QPoint> calculateCircleCartesian(QPoint center, int radius, qint64 &time);
 
     void drawEllipseSymmetry(QPainter &painter, const QVector<QPoint> &points, const QColor &color, QPoint center, int rx, int ry, int rotation, int thickness, bool addToBuffer = false, bool regionHighlight = false);
+    void removeShapeFromBuffer(const QVector<QPoint> &points, const QColor &color);
     QVector<QPoint> calculateEllipsePolar(QPoint center, int rx, int ry, qint64 &time);
     QVector<QPoint> calculateEllipseMidpoint(QPoint center, int rx, int ry, qint64 &time);
     QVector<QPoint> calculateEllipseCartesian(QPoint center, int rx, int ry, qint64 &time);
@@ -222,22 +225,27 @@ private:
     QHash<QPoint, QList<QColor>> pixelBuffer;
     
     // Editor UI Architecture State
-    enum ActiveTool { TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE, TOOL_POLYGON, TOOL_FLOOD_FILL, TOOL_BOUNDARY_FILL };
+    enum ActiveTool { TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE, TOOL_POLYGON, TOOL_FLOOD_FILL, TOOL_BOUNDARY_FILL, TOOL_SCANLINE_FILL };
     ActiveTool currentTool;
     QStackedWidget *settingsStack;
     QList<QToolButton*> sidebarButtons;
     QFrame *navbar;
+    QLabel *toolNameLabel;
     QPushButton *btnToggleNavbar;
 
     // Polygon State
     QVector<QPoint> activePolygonPoints;
     QVector<QPoint> committedPolygonPixels;
+    QVector<QPoint> lastClosedPolygonVertices;
     bool polygonClosed;
     QColor polygonFillColor;
 
     // Fill Tool State
     QColor currentFillColor;
     QColor currentBoundaryColor;
+    bool colorPickerActive;
+    int colorPickerMode; // 0=fill, 1=edge, 2=boundary
+    int fillConnectivity; // 4 or 8
     
     // Legacy Animation logic references...
     float animationSpeedMultiplier;

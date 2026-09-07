@@ -9,6 +9,8 @@
 #include <QElapsedTimer>
 #include <QtMath>
 #include <QResizeEvent>
+#include <QMenu>
+#include <QAction>
 #include <algorithm>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -18,181 +20,324 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
 
     // --- NEW UI ARCHITECTURE ---
-    // Reuse the central widget created by setupUi() instead of replacing it.
-    // Calling setCentralWidget() a second time would DELETE the original
-    // ui->centralwidget (and any child widget still attached to it, e.g.
-    // groupBoxDebugger/textDebugger), leaving the ui->* pointers dangling
-    // and causing a crash when a slot touches them after the event loop starts.
     QWidget* newCentral = ui->centralwidget;
     if (QLayout* oldLayout = newCentral->layout()) {
         while (QLayoutItem* item = oldLayout->takeAt(0)) {
-            if (QWidget* w = item->widget())
-                w->setParent(newCentral);
+            if (QWidget* w = item->widget()) w->setParent(newCentral);
             delete item;
         }
         delete oldLayout;
     }
-    
-    // Global Styling for Legibility
+
+    // Consolidated Catppuccin Mocha stylesheet
+    this->setStyleSheet(
+        "QMainWindow { background-color: #11111b; }"
+        "QMenuBar { background-color: #181825; color: #cdd6f4; border-bottom: 1px solid #313244; }"
+        "QMenuBar::item:selected { background-color: #45475a; }"
+        "QMenu { background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #313244; }"
+        "QMenu::item:selected { background-color: #89b4fa; color: #11111b; }"
+        "QStatusBar { background-color: #181825; color: #a6adc8; border-top: 1px solid #313244; }"
+    );
     newCentral->setStyleSheet(
-        "QGroupBox { font-weight: bold; border: 1px solid #45475a; border-radius: 6px; margin-top: 20px; padding-top: 15px; color: #89b4fa; }"
-        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 10px; padding: 0 5px; }"
+        "QWidget { background-color: #1e1e2e; color: #cdd6f4; font-family: 'Menlo'; font-size: 13px; }"
+        "QGroupBox { border: 1px solid #313244; border-radius: 6px; margin-top: 14px; padding: 8px 6px 6px 6px; font-weight: bold; color: #89b4fa; background-color: #181825; }"
+        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 8px; padding: 0 4px; }"
         "QLabel { color: #cdd6f4; }"
-        "QComboBox { background-color: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; padding: 4px; min-height: 24px; min-width: 80px; }"
-        "QComboBox QAbstractItemView { background-color: #313244; color: #cdd6f4; selection-background-color: #89b4fa; selection-color: #11111b; }"
-        "QSpinBox, QDoubleSpinBox { background-color: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; padding: 4px; min-height: 24px; min-width: 60px; }"
-        "QPushButton { background-color: #89b4fa; color: #11111b; font-weight: bold; border-radius: 4px; padding: 6px 12px; border: none; min-height: 24px; }"
-        "QPushButton:hover { background-color: #b4befe; }"
-        "QPushButton:pressed { background-color: #74c7ec; }"
+        "QPushButton { background-color: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 5px; padding: 5px 10px; font-weight: bold; min-height: 22px; }"
+        "QPushButton:hover { background-color: #45475a; border-color: #89b4fa; color: #ffffff; }"
+        "QPushButton:pressed { background-color: #585b70; border-color: #b4befe; }"
+        "QComboBox { background-color: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; padding: 3px 6px; min-height: 22px; }"
+        "QComboBox::drop-down { border: none; width: 20px; }"
+        "QComboBox QAbstractItemView { background-color: #313244; color: #cdd6f4; selection-background-color: #89b4fa; selection-color: #11111b; border: 1px solid #45475a; }"
+        "QSpinBox { background-color: #313244; color: #cdd6f4; border: 1px solid #45475a; border-radius: 4px; padding: 3px; min-height: 22px; min-width: 50px; }"
+        "QSlider::groove:horizontal { border: 1px solid #45475a; height: 4px; background: #313244; border-radius: 2px; }"
+        "QSlider::handle:horizontal { background: #89b4fa; width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; }"
+        "QSlider::handle:horizontal:hover { background: #b4befe; }"
+        "QCheckBox { spacing: 6px; color: #cdd6f4; }"
+        "QCheckBox::indicator { width: 16px; height: 16px; border-radius: 3px; border: 1px solid #45475a; background: #313244; }"
+        "QCheckBox::indicator:checked { background: #89b4fa; border-color: #89b4fa; }"
+        "QTextBrowser { background-color: #11111b; border: 1px solid #313244; border-radius: 6px; padding: 6px; color: #a6e3a1; font-family: 'Menlo', monospace; font-size: 11px; }"
+        "QScrollArea { border: none; background-color: transparent; }"
+        "QScrollBar:vertical { background: #1e1e2e; width: 8px; border-radius: 4px; }"
+        "QScrollBar::handle:vertical { background: #45475a; min-height: 20px; border-radius: 4px; max-height: 40px; }"
+        "QScrollBar::handle:vertical:hover { background: #585b70; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }"
     );
 
     QHBoxLayout* mainLayout = new QHBoxLayout(newCentral);
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // Sidebar
+    // ---- SIDEBAR with SVG icons ----
     QFrame* sidebar = new QFrame(newCentral);
-    sidebar->setFixedWidth(120);
-    sidebar->setStyleSheet("background-color: #181825; border-right: 1px solid #313244;");
+    sidebar->setFixedWidth(130);
+    sidebar->setStyleSheet("QFrame { background-color: #181825; border-right: 1px solid #313244; }");
     QVBoxLayout* sidebarLayout = new QVBoxLayout(sidebar);
-    sidebarLayout->setContentsMargins(10, 20, 10, 20);
-    sidebarLayout->setSpacing(15);
-    
-    // Tools (Only Drawing Shapes)
+    sidebarLayout->setContentsMargins(8, 12, 8, 12);
+    sidebarLayout->setSpacing(6);
+
+    const char* svgNormal[] = {
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><line x1='5' y1='27' x2='27' y2='5' stroke='#a6adc8' stroke-width='2.5' stroke-linecap='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='11' fill='none' stroke='#a6adc8' stroke-width='2.5'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><ellipse cx='16' cy='16' rx='13' ry='8' fill='none' stroke='#a6adc8' stroke-width='2.5'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#a6adc8' stroke-width='2.5' stroke-linejoin='round'/></svg>"
+    };
+    const char* svgChecked[] = {
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><line x1='5' y1='27' x2='27' y2='5' stroke='#11111b' stroke-width='3' stroke-linecap='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='11' fill='none' stroke='#11111b' stroke-width='3'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><ellipse cx='16' cy='16' rx='13' ry='8' fill='none' stroke='#11111b' stroke-width='3'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#11111b' stroke-width='3' stroke-linejoin='round'/></svg>"
+    };
     QStringList toolNames = {"Line", "Circle", "Ellipse", "Polygon"};
-    for(int i=0; i<4; ++i) {
+    QList<QPixmap> normalPixList, checkedPixList;
+    for (int i = 0; i < 4; ++i) {
+        QSvgRenderer r{QByteArray(svgNormal[i])};
+        QPixmap nPix(32, 32); nPix.fill(Qt::transparent);
+        QPainter np(&nPix); r.render(&np); np.end();
+        normalPixList.append(nPix);
+
+        QSvgRenderer rc{QByteArray(svgChecked[i])};
+        QPixmap cPix(32, 32); cPix.fill(Qt::transparent);
+        QPainter cp(&cPix); rc.render(&cp); cp.end();
+        checkedPixList.append(cPix);
+
         QToolButton* btn = new QToolButton(sidebar);
-        btn->setText(toolNames[i]);
+        btn->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+        btn->setAutoRaise(true);
         btn->setCheckable(true);
-        btn->setFixedSize(100, 50);
-        btn->setStyleSheet("QToolButton { background-color: #313244; border-radius: 8px; color: #cdd6f4; font-weight: bold; border: none; } QToolButton:checked { background-color: #89b4fa; color: #11111b; }");
-        sidebarLayout->addWidget(btn);
+        btn->setFixedSize(110, 60);
+        btn->setText(toolNames[i]);
+        btn->setIconSize(QSize(32, 32));
+        btn->setIcon(QIcon(nPix));
+        btn->setStyleSheet(
+            "QToolButton { background-color: transparent; border: none; border-radius: 8px; color: #a6adc8; padding: 4px; }"
+            "QToolButton:hover { background-color: #313244; color: #cdd6f4; }"
+            "QToolButton:checked { background-color: #89b4fa; color: #11111b; }"
+        );
         sidebarButtons.append(btn);
+        sidebarLayout->addWidget(btn);
         connect(btn, &QToolButton::clicked, this, [this, i]() { selectTool(i); });
     }
     sidebarLayout->addStretch();
-    
-    // Right Container
+
+    // ---- RIGHT PANEL ----
     QVBoxLayout* rightLayout = new QVBoxLayout();
-    rightLayout->setContentsMargins(20, 20, 20, 20);
-    rightLayout->setSpacing(15);
-    
-    // Navbar
+    rightLayout->setContentsMargins(10, 10, 10, 10);
+    rightLayout->setSpacing(6);
+
+    // ---- TOP TOOLBAR ----
     navbar = new QFrame(newCentral);
     navbar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    navbar->setFixedHeight(40);
+    navbar->setStyleSheet("QFrame { background-color: #181825; border-bottom: 1px solid #313244; }");
     QHBoxLayout* navbarLayout = new QHBoxLayout(navbar);
-    navbarLayout->setContentsMargins(15, 10, 15, 10);
-    navbarLayout->setSpacing(20);
-    
-    // Toggle Button
-    btnToggleNavbar = new QPushButton("▲ Collapse Toolbar", newCentral);
-    btnToggleNavbar->setStyleSheet("QPushButton { background-color: #313244; color: #cdd6f4; border: none; font-weight: bold; border-radius: 4px; padding: 4px; } QPushButton:hover { background-color: #45475a; }");
+    navbarLayout->setContentsMargins(8, 4, 8, 4);
+    navbarLayout->setSpacing(6);
+
+    btnToggleNavbar = new QPushButton("<", navbar);
+    btnToggleNavbar->setFixedSize(30, 30);
+    btnToggleNavbar->setToolTip("Collapse / Expand Settings");
+    btnToggleNavbar->setStyleSheet(
+        "QPushButton { background-color: transparent; color: #a6adc8; border: none; font-size: 16px; padding: 0; }"
+        "QPushButton:hover { color: #cdd6f4; background-color: #313244; border-radius: 4px; }"
+    );
     connect(btnToggleNavbar, &QPushButton::clicked, this, &MainWindow::handleToggleNavbar);
-    
-    settingsStack = new QStackedWidget(navbar);
-    
-    // Page 0: Line Settings
+    navbarLayout->addWidget(btnToggleNavbar);
+
+    toolNameLabel = new QLabel("Line");
+    toolNameLabel->setStyleSheet("QLabel { color: #89b4fa; font-weight: bold; font-size: 14px; border: none; background-color: transparent; }");
+    navbarLayout->addWidget(toolNameLabel);
+
+    navbarLayout->addStretch();
+
+    QPushButton* btnClearCanvas = new QPushButton("Clear All", navbar);
+    btnClearCanvas->setFixedHeight(30);
+    btnClearCanvas->setStyleSheet(
+        "QPushButton { background-color: #f38ba8; color: #11111b; font-weight: bold; border: none; border-radius: 4px; padding: 4px 12px; }"
+        "QPushButton:hover { background-color: #eba0ac; }"
+    );
+    connect(btnClearCanvas, &QPushButton::clicked, this, &MainWindow::handleClearCanvasClicked);
+    navbarLayout->addWidget(btnClearCanvas);
+
+    QLabel* lblGrid = new QLabel("Grid:");
+    lblGrid->setStyleSheet("QLabel { color: #a6adc8; border: none; background-color: transparent; }");
+    navbarLayout->addWidget(lblGrid);
+    ui->spinBox->setFixedWidth(50);
+    ui->spinBox->setFixedHeight(24);
+    navbarLayout->addWidget(ui->spinBox);
+
+    QLabel* lblSpd = new QLabel("Speed:");
+    lblSpd->setStyleSheet("QLabel { color: #a6adc8; border: none; background-color: transparent; }");
+    navbarLayout->addWidget(lblSpd);
+    ui->sliderSpeed->setFixedWidth(80);
+    ui->sliderSpeed->setFixedHeight(20);
+    navbarLayout->addWidget(ui->sliderSpeed);
+    ui->lblSpeed->setStyleSheet("QLabel { color: #a6adc8; border: none; background-color: transparent; min-width: 38px; }");
+    ui->lblSpeed->setFixedHeight(24);
+    navbarLayout->addWidget(ui->lblSpeed);
+
+    rightLayout->addWidget(navbar);
+
+    // ---- SETTINGS BAR (collapsible row below toolbar) ----
+    settingsStack = new QStackedWidget();
+    settingsStack->setStyleSheet("QStackedWidget { background-color: #1e1e2e; border-bottom: 1px solid #313244; }");
+
+    // ---- SETTINGS STACK PAGES (flat, no scroll wrapper) ----
     QWidget* pageLine = new QWidget();
+    pageLine->setStyleSheet("background-color: #1e1e2e;");
     QHBoxLayout* lLine = new QHBoxLayout(pageLine);
+    lLine->setContentsMargins(6, 2, 6, 2);
+    lLine->setSpacing(8);
     lLine->addWidget(ui->groupBoxLineAlgo);
     lLine->addWidget(ui->groupBoxLineControls);
+    lLine->addWidget(ui->groupBoxLinePerf);
     lLine->addWidget(ui->groupBoxLineActions);
     lLine->addStretch();
     settingsStack->addWidget(pageLine);
-    
-    // Page 1: Circle Settings
+
     QWidget* pageCircle = new QWidget();
+    pageCircle->setStyleSheet("background-color: #1e1e2e;");
     QHBoxLayout* lCircle = new QHBoxLayout(pageCircle);
+    lCircle->setContentsMargins(6, 2, 6, 2);
+    lCircle->setSpacing(8);
     lCircle->addWidget(ui->groupBoxCircleAlgo);
     lCircle->addWidget(ui->groupBoxCircleControls);
+    lCircle->addWidget(ui->groupBoxCirclePerf);
     lCircle->addWidget(ui->groupBoxCircleActions);
     lCircle->addStretch();
     settingsStack->addWidget(pageCircle);
-    
-    // Fix Ellipse Controls Layout (Override the distorted QGridLayout)
+
     if (ui->groupBoxEllipseControls->layout()) {
         delete ui->groupBoxEllipseControls->layout();
     }
     QHBoxLayout* lEllipseOverride = new QHBoxLayout(ui->groupBoxEllipseControls);
-    lEllipseOverride->setContentsMargins(10, 20, 10, 10);
+    lEllipseOverride->setContentsMargins(6, 14, 6, 4);
+    lEllipseOverride->setSpacing(6);
     lEllipseOverride->addWidget(ui->comboEllipsePoint);
     lEllipseOverride->addWidget(ui->labelRx);
     lEllipseOverride->addWidget(ui->spinBoxRx);
     lEllipseOverride->addWidget(ui->labelRy);
     lEllipseOverride->addWidget(ui->spinBoxRy);
-    
-    // Page 2: Ellipse Settings
+
     QWidget* pageEllipse = new QWidget();
+    pageEllipse->setStyleSheet("background-color: #1e1e2e;");
     QHBoxLayout* lEllipse = new QHBoxLayout(pageEllipse);
+    lEllipse->setContentsMargins(6, 2, 6, 2);
+    lEllipse->setSpacing(8);
     lEllipse->addWidget(ui->groupBoxEllipseAlgo);
     lEllipse->addWidget(ui->groupBoxEllipseControls);
+    lEllipse->addWidget(ui->groupBoxEllipsePerf);
     lEllipse->addWidget(ui->groupBoxEllipseActions);
     lEllipse->addStretch();
     settingsStack->addWidget(pageEllipse);
 
-    // Page 3: Polygon & Fill Settings
     QWidget* pagePolygon = new QWidget();
+    pagePolygon->setStyleSheet("background-color: #1e1e2e;");
     QHBoxLayout* lPolygon = new QHBoxLayout(pagePolygon);
-    
+    lPolygon->setContentsMargins(6, 2, 6, 2);
+    lPolygon->setSpacing(6);
+
     QComboBox* comboPolygonMode = new QComboBox(pagePolygon);
-    comboPolygonMode->addItems({"Mode: Draw Polygon", "Mode: Flood Fill", "Mode: Boundary Fill"});
+    comboPolygonMode->setFixedWidth(140);
+    comboPolygonMode->addItems({"Draw Polygon", "Flood Fill", "Boundary Fill", "Scanline Fill"});
     connect(comboPolygonMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
         if (index == 0) currentTool = TOOL_POLYGON;
         else if (index == 1) currentTool = TOOL_FLOOD_FILL;
         else if (index == 2) currentTool = TOOL_BOUNDARY_FILL;
+        else if (index == 3) {
+            currentTool = TOOL_SCANLINE_FILL;
+            if (lastClosedPolygonVertices.size() >= 3) {
+                scanlineFillPolygon(lastClosedPolygonVertices, currentFillColor, &committedPolygonPixels);
+                drawgrid();
+            }
+        }
     });
-    
-    QPushButton* btnPolygonClear = new QPushButton("Clear Polygon", pagePolygon);
-    QPushButton* btnPolygonClose = new QPushButton("Close Polygon", pagePolygon);
-    QPushButton* btnPolygonColor = new QPushButton("Polygon Color", pagePolygon);
+
+    QPushButton* btnPolygonColor = new QPushButton("Edge Color", pagePolygon);
+    QPushButton* btnPolygonClear = new QPushButton("Clear", pagePolygon);
+    QPushButton* btnPolygonClose = new QPushButton("Close", pagePolygon);
     QPushButton* btnFillColor = new QPushButton("Fill Color", pagePolygon);
-    QPushButton* btnBoundaryColor = new QPushButton("Boundary Color", pagePolygon);
-    
+    QPushButton* btnBoundaryColor = new QPushButton("Boundary", pagePolygon);
+    QPushButton* btnPickColor = new QPushButton("Pick Color", pagePolygon);
+
+    QComboBox* comboConnectivity = new QComboBox(pagePolygon);
+    comboConnectivity->setFixedWidth(100);
+    comboConnectivity->addItems({"4-Way", "8-Way"});
+    connect(comboConnectivity, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        fillConnectivity = (index == 0) ? 4 : 8;
+    });
+
     lPolygon->addWidget(comboPolygonMode);
     lPolygon->addWidget(btnPolygonColor);
-    lPolygon->addWidget(btnPolygonClear);
     lPolygon->addWidget(btnPolygonClose);
     lPolygon->addWidget(btnFillColor);
     lPolygon->addWidget(btnBoundaryColor);
+    lPolygon->addWidget(btnPickColor);
+    lPolygon->addWidget(comboConnectivity);
+    lPolygon->addWidget(btnPolygonClear);
     lPolygon->addStretch();
     settingsStack->addWidget(pagePolygon);
-    
-    navbarLayout->addWidget(settingsStack);
-    navbarLayout->addStretch();
-    
-    // Clear Canvas Button
-    QPushButton* btnClearCanvas = new QPushButton("Clear Canvas", navbar);
-    btnClearCanvas->setStyleSheet("background-color: #f38ba8; color: #11111b; min-height: 30px; font-weight: bold;");
-    connect(btnClearCanvas, &QPushButton::clicked, this, &MainWindow::handleClearCanvasClicked);
-    
-    navbarLayout->addWidget(btnClearCanvas);
-    navbarLayout->addWidget(ui->groupBoxGlobal);
-    
-    rightLayout->addWidget(navbar);
-    rightLayout->addWidget(btnToggleNavbar);
-    rightLayout->addWidget(ui->frame);
+
+    rightLayout->addWidget(settingsStack);
+
+    // ---- DRAWING FRAME ----
+    ui->frame->setStyleSheet("background-color: #0f111a; border: 2px solid #313244; border-radius: 8px;");
+    rightLayout->addWidget(ui->frame, 1);
+
+    // ---- DEBUGGER ----
+    ui->groupBoxDebugger->setTitle("Algorithm Debugger");
+    ui->groupBoxDebugger->setFixedHeight(120);
     rightLayout->addWidget(ui->groupBoxDebugger);
-    
+
     mainLayout->addWidget(sidebar);
-    mainLayout->addLayout(rightLayout);
-    
-    // Default State
+    mainLayout->addLayout(rightLayout, 1);
+
+    // ---- DEFAULT STATE ----
     currentTool = TOOL_LINE;
     sidebarButtons[0]->setChecked(true);
     settingsStack->setCurrentIndex(0);
     polygonClosed = false;
     polygonFillColor = QColor(86, 189, 248);
     currentFillColor = QColor(247, 118, 142);
-    currentBoundaryColor = QColor(255, 255, 255);
-    
+    currentBoundaryColor = polygonFillColor;
+    colorPickerActive = false;
+    colorPickerMode = 0;
+    fillConnectivity = 4;
+
     connect(btnPolygonClear, &QPushButton::clicked, this, &MainWindow::handlePolygonClearClicked);
     connect(btnPolygonClose, &QPushButton::clicked, this, &MainWindow::handlePolygonCloseClicked);
     connect(btnPolygonColor, &QPushButton::clicked, this, [this]() {
         QColor color = QColorDialog::getColor(polygonFillColor, this, "Select Polygon Edge Color");
-        if (color.isValid()) polygonFillColor = color;
+        if (color.isValid()) { polygonFillColor = color; currentBoundaryColor = color; }
     });
     connect(btnFillColor, &QPushButton::clicked, this, &MainWindow::handleFillColorClicked);
     connect(btnBoundaryColor, &QPushButton::clicked, this, &MainWindow::handleBoundaryColorClicked);
+    connect(btnPickColor, &QPushButton::clicked, this, [this]() {
+        QMenu* pickMenu = new QMenu(this);
+        pickMenu->setStyleSheet(
+            "QMenu { background-color: #1e1e2e; color: #cdd6f4; border: 1px solid #313244; }"
+            "QMenu::item:selected { background-color: #89b4fa; color: #11111b; }"
+        );
+        QAction* pickFill = pickMenu->addAction("Pick Fill Color");
+        QAction* pickEdge = pickMenu->addAction("Pick Edge Color");
+        QAction* pickBoundary = pickMenu->addAction("Pick Boundary Color");
+        QAction* chosen = pickMenu->exec(QCursor::pos());
+        if (chosen == pickFill) {
+            colorPickerMode = 0;
+            colorPickerActive = true;
+            statusBar()->showMessage("Click a pixel to pick fill color...");
+        } else if (chosen == pickEdge) {
+            colorPickerMode = 1;
+            colorPickerActive = true;
+            statusBar()->showMessage("Click a pixel to pick edge color...");
+        } else if (chosen == pickBoundary) {
+            colorPickerMode = 2;
+            colorPickerActive = true;
+            statusBar()->showMessage("Click a pixel to pick boundary color...");
+        }
+        delete pickMenu;
+    });
     
     // Old connections and layouts
     ui->tabWidget->hide();
@@ -703,103 +848,108 @@ void MainWindow::drawgrid()
 
     if (haspoint1 && haspoint2 && linevisible)
     {
-        if (currentTool == TOOL_LINE) {
-            // pixelBuffer.clear(); // We must not clear to keep fills!
-            if (selectedalgorithm == 2) {
-                // Overlap Both
-                if (lineAnimationStep >= 0) {
-                    int subsetDda = (lineAnimationStep < ddapoints.size()) ? lineAnimationStep : ddapoints.size();
-                    int subsetBres = (lineAnimationStep < bresenhampoints.size()) ? lineAnimationStep : bresenhampoints.size();
-                    drawdda(painter, ddapoints.mid(0, subsetDda), false);
-                    drawbresenham(painter, bresenhampoints.mid(0, subsetBres), false);
-                } else {
-                    drawdda(painter, ddapoints, false);
-                    drawbresenham(painter, bresenhampoints, false);
-                }
+        if (selectedalgorithm == 2) {
+            if (lineAnimationStep >= 0) {
+                int subsetDda = (lineAnimationStep < ddapoints.size()) ? lineAnimationStep : ddapoints.size();
+                int subsetBres = (lineAnimationStep < bresenhampoints.size()) ? lineAnimationStep : bresenhampoints.size();
+                drawdda(painter, ddapoints.mid(0, subsetDda), false);
+                drawbresenham(painter, bresenhampoints.mid(0, subsetBres), false);
             } else {
-                QVector<QPoint> activePoints = (selectedalgorithm == 0) ? ddapoints : bresenhampoints;
-                if (lineAnimationStep >= 0) {
-                    int subsetSize = (lineAnimationStep < activePoints.size()) ? lineAnimationStep : activePoints.size();
-                    QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
-                    if (selectedalgorithm == 0) drawdda(painter, animatedSubset, false);
-                    else drawbresenham(painter, animatedSubset, false);
-                } else {
-                    if (selectedalgorithm == 0) drawdda(painter, ddapoints, false);
-                    else drawbresenham(painter, bresenhampoints, false);
-                }
+                drawdda(painter, ddapoints, false);
+                drawbresenham(painter, bresenhampoints, false);
             }
-        } else if (currentTool == TOOL_CIRCLE) {
-            // pixelBuffer.clear();
-            if (selectedCircleAlgorithm == 3) {
-                // Draw All (Overlap)
-                if (animationStep >= 0) {
-                    int sPolar = (animationStep < polarPoints.size()) ? animationStep : polarPoints.size();
-                    int sMid = (animationStep < midpointPoints.size()) ? animationStep : midpointPoints.size();
-                    int sCart = (animationStep < cartesianPoints.size()) ? animationStep : cartesianPoints.size();
-                    drawCircleSymmetry(painter, polarPoints.mid(0, sPolar), QColor(255, 100, 200), true);
-                    drawCircleSymmetry(painter, midpointPoints.mid(0, sMid), QColor(100, 255, 100), true);
-                    drawCircleSymmetry(painter, cartesianPoints.mid(0, sCart), QColor(100, 200, 255), true);
-                } else {
-                    drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), true);
-                    drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), true);
-                    drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), true);
-                }
-                renderPixelBuffer(painter);
+        } else {
+            QVector<QPoint> activePoints = (selectedalgorithm == 0) ? ddapoints : bresenhampoints;
+            if (lineAnimationStep >= 0) {
+                int subsetSize = (lineAnimationStep < activePoints.size()) ? lineAnimationStep : activePoints.size();
+                QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
+                if (selectedalgorithm == 0) drawdda(painter, animatedSubset, false);
+                else drawbresenham(painter, animatedSubset, false);
             } else {
-                QVector<QPoint> activePoints;
-                QColor color;
-                if (selectedCircleAlgorithm == 0) { activePoints = polarPoints; color = QColor(255, 100, 200); }
-                else if (selectedCircleAlgorithm == 1) { activePoints = midpointPoints; color = QColor(100, 255, 100); }
-                else { activePoints = cartesianPoints; color = QColor(100, 200, 255); }
-                
-                if (animationStep >= 0) {
-                    int subsetSize = (animationStep < activePoints.size()) ? animationStep : activePoints.size();
-                    QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
-                    drawCircleSymmetry(painter, animatedSubset, color);
-                } else {
-                    drawCircleSymmetry(painter, activePoints, color);
-                }
+                if (selectedalgorithm == 0) drawdda(painter, ddapoints, false);
+                else drawbresenham(painter, bresenhampoints, false);
             }
+        }
 
+        bool circleToBuffer = (draggingpoint == 0);
+
+        if (selectedCircleAlgorithm == 3) {
+            if (circleToBuffer) {
+                drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), true);
+                drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), true);
+                drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), true);
+            }
+            if (animationStep >= 0) {
+                int sPolar = (animationStep < polarPoints.size()) ? animationStep : polarPoints.size();
+                int sMid = (animationStep < midpointPoints.size()) ? animationStep : midpointPoints.size();
+                int sCart = (animationStep < cartesianPoints.size()) ? animationStep : cartesianPoints.size();
+                drawCircleSymmetry(painter, polarPoints.mid(0, sPolar), QColor(255, 100, 200), false);
+                drawCircleSymmetry(painter, midpointPoints.mid(0, sMid), QColor(100, 255, 100), false);
+                drawCircleSymmetry(painter, cartesianPoints.mid(0, sCart), QColor(100, 200, 255), false);
+            } else if (!circleToBuffer) {
+                drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), false);
+                drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), false);
+                drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), false);
+            }
+        } else {
+            QVector<QPoint> activePoints;
+            QColor color;
+            if (selectedCircleAlgorithm == 0) { activePoints = polarPoints; color = QColor(255, 100, 200); }
+            else if (selectedCircleAlgorithm == 1) { activePoints = midpointPoints; color = QColor(100, 255, 100); }
+            else { activePoints = cartesianPoints; color = QColor(100, 200, 255); }
+            
+            if (circleToBuffer) {
+                drawCircleSymmetry(painter, activePoints, color, true);
+            }
+            if (animationStep >= 0) {
+                int subsetSize = (animationStep < activePoints.size()) ? animationStep : activePoints.size();
+                QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
+                drawCircleSymmetry(painter, animatedSubset, color, false);
+            } else if (!circleToBuffer) {
+                drawCircleSymmetry(painter, activePoints, color, false);
+            }
         }
     }
     
-    if (currentTool == TOOL_ELLIPSE) {
-        // pixelBuffer.clear();
-        // Draw Persistent Ellipses First
-        for (const PersistentEllipse &pe : persistentEllipses) {
-            qint64 dummy_time = 0;
-            QVector<QPoint> pts;
-            if (pe.algorithm == 0) pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
-            else if (pe.algorithm == 1) pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
-            else if (pe.algorithm == 2) pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
-            else {
-                pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
-                drawEllipseSymmetry(painter, pts, QColor(255, 0, 127, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
-                pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
-                drawEllipseSymmetry(painter, pts, QColor(0, 245, 212, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
-                pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
-                drawEllipseSymmetry(painter, pts, QColor(56, 189, 248, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
-                continue;
-            }
-            drawEllipseSymmetry(painter, pts, pe.color, pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+    // Draw Persistent Ellipses (always visible)
+    for (const PersistentEllipse &pe : persistentEllipses) {
+        qint64 dummy_time = 0;
+        QVector<QPoint> pts;
+        if (pe.algorithm == 0) pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
+        else if (pe.algorithm == 1) pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
+        else if (pe.algorithm == 2) pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
+        else {
+            pts = calculateEllipsePolar(pe.center, pe.rx, pe.ry, dummy_time);
+            drawEllipseSymmetry(painter, pts, QColor(255, 0, 127, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+            pts = calculateEllipseMidpoint(pe.center, pe.rx, pe.ry, dummy_time);
+            drawEllipseSymmetry(painter, pts, QColor(0, 245, 212, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+            pts = calculateEllipseCartesian(pe.center, pe.rx, pe.ry, dummy_time);
+            drawEllipseSymmetry(painter, pts, QColor(56, 189, 248, 80), pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+            continue;
         }
-        
-    
-        if (ellipseVisible) {
+        drawEllipseSymmetry(painter, pts, pe.color, pe.center, pe.rx, pe.ry, pe.rotation, pe.thickness, true, false);
+    }
+
+    // Draw active ellipse preview
+    bool ellipseToBuffer = (currentTool == TOOL_ELLIPSE && ellipseVisible && ellipseDraggingPoint == 0);
+    if (currentTool == TOOL_ELLIPSE && ellipseVisible) {
             if (selectedEllipseAlgorithm == 3) {
-                // All Overlap
+                if (ellipseToBuffer) {
+                    drawEllipseSymmetry(painter, ellipsePolarPoints, QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                    drawEllipseSymmetry(painter, ellipseMidpointPoints, QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, ellipseRegionSplit);
+                    drawEllipseSymmetry(painter, ellipseCartesianPoints, QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                }
                 if (ellipseAnimationStep >= 0) {
                     int sPol = (ellipseAnimationStep < ellipsePolarPoints.size()) ? ellipseAnimationStep : ellipsePolarPoints.size();
                     int sMid = (ellipseAnimationStep < ellipseMidpointPoints.size()) ? ellipseAnimationStep : ellipseMidpointPoints.size();
                     int sCar = (ellipseAnimationStep < ellipseCartesianPoints.size()) ? ellipseAnimationStep : ellipseCartesianPoints.size();
-                    drawEllipseSymmetry(painter, ellipsePolarPoints.mid(0, sPol), QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
-                    drawEllipseSymmetry(painter, ellipseMidpointPoints.mid(0, sMid), QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, ellipseRegionSplit);
-                    drawEllipseSymmetry(painter, ellipseCartesianPoints.mid(0, sCar), QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
-                } else {
-                    drawEllipseSymmetry(painter, ellipsePolarPoints, QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
-                    drawEllipseSymmetry(painter, ellipseMidpointPoints, QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, ellipseRegionSplit);
-                    drawEllipseSymmetry(painter, ellipseCartesianPoints, QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, false);
+                    drawEllipseSymmetry(painter, ellipsePolarPoints.mid(0, sPol), QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, false);
+                    drawEllipseSymmetry(painter, ellipseMidpointPoints.mid(0, sMid), QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, ellipseRegionSplit);
+                    drawEllipseSymmetry(painter, ellipseCartesianPoints.mid(0, sCar), QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, false);
+                } else if (!ellipseToBuffer) {
+                    drawEllipseSymmetry(painter, ellipsePolarPoints, QColor(255, 0, 127), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, false);
+                    drawEllipseSymmetry(painter, ellipseMidpointPoints, QColor(0, 245, 212), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, ellipseRegionSplit);
+                    drawEllipseSymmetry(painter, ellipseCartesianPoints, QColor(56, 189, 248), ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, false);
                 }
             } else {
                 QVector<QPoint> activePoints;
@@ -808,16 +958,18 @@ void MainWindow::drawgrid()
                 else if (selectedEllipseAlgorithm == 1) { activePoints = ellipseMidpointPoints; color = QColor(0, 245, 212); }
                 else { activePoints = ellipseCartesianPoints; color = QColor(56, 189, 248); }
                 
+                if (ellipseToBuffer) {
+                    drawEllipseSymmetry(painter, activePoints, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
+                }
                 if (ellipseAnimationStep >= 0) {
                     int subsetSize = (ellipseAnimationStep < activePoints.size()) ? ellipseAnimationStep : activePoints.size();
                     QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
-                    drawEllipseSymmetry(painter, animatedSubset, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
-                } else {
-                    drawEllipseSymmetry(painter, activePoints, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, true, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
+                    drawEllipseSymmetry(painter, animatedSubset, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
+                } else if (!ellipseToBuffer) {
+                    drawEllipseSymmetry(painter, activePoints, color, ellipseCenter, ellipseRx, ellipseRy, ellipseRotation, ellipseThickness, false, (selectedEllipseAlgorithm == 1 && ellipseRegionSplit));
                 }
             }
         }
-    }
     
     if (currentTool == TOOL_ELLIPSE) {
         if (hasEllipseCenter) drawpoint(painter, ellipseCenter, QColor(247, 118, 142));
@@ -831,9 +983,18 @@ void MainWindow::drawgrid()
     if (haspoint2)
         drawpoint(painter, point2, QColor(70, 255, 120));
 
-    if (currentTool == TOOL_POLYGON) {
-        if (activePolygonPoints.size() > 0) {
-            drawPolygonEdges(painter, activePolygonPoints, polygonFillColor);
+    if (currentTool == TOOL_POLYGON || currentTool == TOOL_FLOOD_FILL || currentTool == TOOL_BOUNDARY_FILL || currentTool == TOOL_SCANLINE_FILL) {
+        for (const QPoint &pt : activePolygonPoints) {
+            drawpoint(painter, pt, polygonFillColor);
+        }
+        if (activePolygonPoints.size() >= 2) {
+            qint64 dummyTime = 0;
+            for (int i = 0; i < activePolygonPoints.size() - 1; ++i) {
+                QVector<QPoint> edge = calculatedda(activePolygonPoints[i], activePolygonPoints[i + 1], dummyTime);
+                for (const QPoint &p : edge) {
+                    drawpoint(painter, p, polygonFillColor);
+                }
+            }
         }
     }
 
@@ -871,14 +1032,73 @@ void MainWindow::mouse_pressed()
     QPoint clickpos(org_x, org_y);
     QPoint logical = screentological(clickpos);
 
+    if (colorPickerActive) {
+        colorPickerActive = false;
+        QColor picked;
+        if (pixelBuffer.contains(logical) && !pixelBuffer[logical].isEmpty()) {
+            picked = pixelBuffer[logical].last();
+        } else {
+            QPixmap pix = ui->frame->pixmap();
+            if (!pix.isNull()) {
+                QColor c = pix.toImage().pixelColor(org_x, org_y);
+                if (c.isValid() && c != QColor(10, 10, 10)) {
+                    picked = c;
+                }
+            }
+        }
+        if (picked.isValid()) {
+            if (colorPickerMode == 0) {
+                currentFillColor = picked;
+                statusBar()->showMessage("Fill color set: " + picked.name());
+            } else if (colorPickerMode == 1) {
+                polygonFillColor = picked;
+                currentBoundaryColor = picked;
+                statusBar()->showMessage("Edge color set: " + picked.name());
+            } else if (colorPickerMode == 2) {
+                currentBoundaryColor = picked;
+                statusBar()->showMessage("Boundary color set: " + picked.name());
+            }
+        } else {
+            statusBar()->showMessage("No color found at that pixel.");
+        }
+        return;
+    }
+
     if (currentTool == TOOL_ELLIPSE) {
         if (hasEllipseCenter && nearpoint(logical, ellipseCenter)) {
+            if (ellipseVisible) {
+                qint64 dt = 0;
+                QVector<QPoint> oldPts = calculateEllipsePolar(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(255, 0, 127));
+                oldPts = calculateEllipseMidpoint(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(0, 245, 212));
+                oldPts = calculateEllipseCartesian(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(56, 189, 248));
+            }
             ellipseDraggingPoint = 1; statusBar()->showMessage("Dragging Ellipse Center"); return;
         }
         if (hasEllipseRx && nearpoint(logical, QPoint(ellipseCenter.x() + ellipseRx, ellipseCenter.y()))) {
+            if (ellipseVisible) {
+                qint64 dt = 0;
+                QVector<QPoint> oldPts = calculateEllipsePolar(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(255, 0, 127));
+                oldPts = calculateEllipseMidpoint(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(0, 245, 212));
+                oldPts = calculateEllipseCartesian(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(56, 189, 248));
+            }
             ellipseDraggingPoint = 2; statusBar()->showMessage("Dragging Ellipse Radius X"); return;
         }
         if (hasEllipseRy && nearpoint(logical, QPoint(ellipseCenter.x(), ellipseCenter.y() + ellipseRy))) {
+            if (ellipseVisible) {
+                qint64 dt = 0;
+                QVector<QPoint> oldPts = calculateEllipsePolar(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(255, 0, 127));
+                oldPts = calculateEllipseMidpoint(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(0, 245, 212));
+                oldPts = calculateEllipseCartesian(ellipseCenter, ellipseRx, ellipseRy, dt);
+                removeShapeFromBuffer(oldPts, QColor(56, 189, 248));
+            }
             ellipseDraggingPoint = 3; statusBar()->showMessage("Dragging Ellipse Radius Y"); return;
         }
 
@@ -906,8 +1126,11 @@ void MainWindow::mouse_pressed()
             drawgrid(); statusBar()->showMessage("Ellipse fully defined."); return;
         }
         return;
-    } else if (currentTool == TOOL_POLYGON) {
-        if (!polygonClosed) {
+    } else if (currentTool == TOOL_POLYGON || currentTool == TOOL_SCANLINE_FILL) {
+        if (currentTool == TOOL_SCANLINE_FILL && lastClosedPolygonVertices.size() >= 3) {
+            scanlineFillPolygon(lastClosedPolygonVertices, currentFillColor, &committedPolygonPixels);
+            drawgrid();
+        } else if (currentTool == TOOL_POLYGON && !polygonClosed) {
             activePolygonPoints.append(logical);
             drawgrid();
             statusBar()->showMessage(QString("Polygon point %1 added.").arg(activePolygonPoints.size()));
@@ -925,6 +1148,18 @@ void MainWindow::mouse_pressed()
 
     if (haspoint1 && nearpoint(logical, point1))
     {
+        if (haspoint2 && linevisible && currentTool == TOOL_CIRCLE) {
+            int radius = qRound(qSqrt(qPow(point1.x() - point2.x(), 2) + qPow(point1.y() - point2.y(), 2)));
+            if (radius > 0) {
+                qint64 dt = 0;
+                QVector<QPoint> oldPts = calculateCirclePolar(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(255, 100, 200));
+                oldPts = calculateCircleMidpoint(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(100, 255, 100));
+                oldPts = calculateCircleCartesian(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(100, 200, 255));
+            }
+        }
         draggingpoint = 1;
         statusBar()->showMessage("Dragging Point 1");
         return;
@@ -932,6 +1167,18 @@ void MainWindow::mouse_pressed()
 
     if (haspoint2 && nearpoint(logical, point2))
     {
+        if (haspoint1 && linevisible && currentTool == TOOL_CIRCLE) {
+            int radius = qRound(qSqrt(qPow(point1.x() - point2.x(), 2) + qPow(point1.y() - point2.y(), 2)));
+            if (radius > 0) {
+                qint64 dt = 0;
+                QVector<QPoint> oldPts = calculateCirclePolar(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(255, 100, 200));
+                oldPts = calculateCircleMidpoint(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(100, 255, 100));
+                oldPts = calculateCircleCartesian(point1, radius, dt);
+                removeShapeFromBuffer(oldPts, QColor(100, 200, 255));
+            }
+        }
         draggingpoint = 2;
         statusBar()->showMessage("Dragging Point 2");
         return;
@@ -1441,6 +1688,14 @@ void MainWindow::calculateEllipseAlgorithms()
     ui->lblEllipsePerimeter->setText(QString("Perimeter (Ramanujan): %1 px").arg(perimeter, 0, 'f', 1));
 }
 
+void MainWindow::removeShapeFromBuffer(const QVector<QPoint> &points, const QColor &color) {
+    for (const QPoint &p : points) {
+        pixelBuffer[p].removeAll(color);
+        if (pixelBuffer[p].isEmpty())
+            pixelBuffer.remove(p);
+    }
+}
+
 void MainWindow::drawEllipseSymmetry(QPainter &painter, const QVector<QPoint> &points, const QColor &color, QPoint center, int rx, int ry, int rotation, int thickness, bool addToBuffer, bool regionHighlight)
 {
     int xc = center.x();
@@ -1655,25 +1910,24 @@ void MainWindow::on_btnCommitEllipse_clicked() {
 }
 
 void MainWindow::selectTool(int toolIndex) {
-    if (toolIndex >= 4) return; // Only 0-3 are in the sidebar now
-    
-    // Select the sidebar button visually
+    if (toolIndex >= 4) return;
+    QStringList names = {"Line", "Circle", "Ellipse", "Polygon"};
     for(int i=0; i<sidebarButtons.size(); ++i) {
         sidebarButtons[i]->setChecked(i == toolIndex);
     }
-    
     currentTool = static_cast<ActiveTool>(toolIndex);
     settingsStack->setCurrentIndex(toolIndex);
+    if (toolNameLabel) toolNameLabel->setText(names[toolIndex]);
     drawgrid();
 }
 
 void MainWindow::handleToggleNavbar() {
-    if (navbar->isVisible()) {
-        navbar->setVisible(false);
-        btnToggleNavbar->setText("▼ Expand Toolbar");
+    if (settingsStack->isVisible()) {
+        settingsStack->setVisible(false);
+        btnToggleNavbar->setText(">");
     } else {
-        navbar->setVisible(true);
-        btnToggleNavbar->setText("▲ Collapse Toolbar");
+        settingsStack->setVisible(true);
+        btnToggleNavbar->setText("<");
     }
 }
 
@@ -1681,17 +1935,38 @@ void MainWindow::handleClearCanvasClicked() {
     pixelBuffer.clear();
     persistentEllipses.clear();
     activePolygonPoints.clear();
+    lastClosedPolygonVertices.clear();
+    committedPolygonPixels.clear();
     haspoint1 = false;
     haspoint2 = false;
+    linevisible = false;
     hasEllipseCenter = false;
     hasEllipseRx = false;
     hasEllipseRy = false;
+    ellipseVisible = false;
+    ellipseCenter = QPoint(0, 0);
+    ellipseRx = 0;
+    ellipseRy = 0;
+    ellipseDraggingPoint = 0;
     polygonClosed = false;
+    animationStep = -1;
+    lineAnimationStep = -1;
+    ellipseAnimationStep = -1;
+    draggingpoint = 0;
+    ddapoints.clear();
+    bresenhampoints.clear();
+    polarPoints.clear();
+    midpointPoints.clear();
+    cartesianPoints.clear();
+    ellipsePolarPoints.clear();
+    ellipseMidpointPoints.clear();
+    ellipseCartesianPoints.clear();
     drawgrid();
 }
 
 void MainWindow::handlePolygonClearClicked() {
     activePolygonPoints.clear();
+    lastClosedPolygonVertices.clear();
     for (const QPoint &p : committedPolygonPixels) {
         pixelBuffer[p].removeAll(polygonFillColor);
         if (pixelBuffer[p].isEmpty())
@@ -1706,7 +1981,10 @@ void MainWindow::handlePolygonCloseClicked() {
     if(activePolygonPoints.size() >= 3) {
         polygonClosed = true;
         committedPolygonPixels.clear();
-        // Commit the polygon boundary edges to the pixel buffer.
+
+        QVector<QPoint> savedVertices = activePolygonPoints;
+        lastClosedPolygonVertices = activePolygonPoints;
+
         qint64 dummyTime = 0;
         for (int i = 0; i < activePolygonPoints.size(); ++i) {
             QPoint p1 = activePolygonPoints[i];
@@ -1719,25 +1997,11 @@ void MainWindow::handlePolygonCloseClicked() {
                 }
             }
         }
-        // Thicken the boundary to 2 pixels wide by also committing the
-        // 4-connected neighbors of every edge pixel.  A 1-pixel-thick
-        // diagonal line has single-cell gaps that a BFS fill can leak
-        // through; a 2-pixel-thick band eliminates all such gaps so
-        // flood / boundary fill stays contained.
-        QVector<QPoint> extra;
-        for (const QPoint &p : committedPolygonPixels) {
-            QPoint neighbors[4] = {
-                QPoint(p.x()+1, p.y()), QPoint(p.x()-1, p.y()),
-                QPoint(p.x(), p.y()+1), QPoint(p.x(), p.y()-1)
-            };
-            for (const QPoint &n : neighbors) {
-                if (!pixelBuffer[n].contains(polygonFillColor)) {
-                    pixelBuffer[n].append(polygonFillColor);
-                    extra.append(n);
-                }
-            }
+
+        if (currentTool == TOOL_SCANLINE_FILL) {
+            scanlineFillPolygon(savedVertices, currentFillColor, &committedPolygonPixels);
         }
-        committedPolygonPixels.append(extra);
+
         activePolygonPoints.clear();
         polygonClosed = false;
         drawgrid();
@@ -1769,28 +2033,27 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
     } else {
         startMatches = pixelBuffer.contains(startNode) && pixelBuffer[startNode].contains(targetColor);
     }
-
     if (!startMatches) return;
+    if (startNode.x() == 0 || startNode.y() == 0) return;
 
-    int maxX = originx / gridsize + 1;
-    int maxY = originy / gridsize + 1;
-    int minX = -maxX;
-    int minY = -maxY;
+    int halfW = ui->frame->width() / 2;
+    int halfH = ui->frame->height() / 2;
 
-    // Safety cap: never fill more than this many cells. Prevents the app
-    // from freezing if the user clicks outside a closed boundary (the fill
-    // would otherwise spread across the entire background grid).
-    const int maxFillCells = 5000;
+    const int maxFillCells = 50000;
 
     QQueue<QPoint> queue;
     queue.enqueue(startNode);
     QSet<QPoint> visited;
+    visited.insert(startNode);
+
+    QPoint dirs4[] = { {1,0},{-1,0},{0,1},{0,-1} };
+    QPoint dirs8[] = { {1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1} };
+    QPoint *dirs = (fillConnectivity == 8) ? dirs8 : dirs4;
+    int dirCount = (fillConnectivity == 8) ? 8 : 4;
 
     while (!queue.isEmpty()) {
         if (visited.size() >= maxFillCells) break;
         QPoint p = queue.dequeue();
-        if (visited.contains(p)) continue;
-        if (p.x() < minX || p.x() > maxX || p.y() < minY || p.y() > maxY) continue;
 
         bool matches = false;
         if (targetIsBackground) {
@@ -1800,54 +2063,55 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
         }
 
         if (matches) {
-            visited.insert(p);
             pixelBuffer[p].clear();
             pixelBuffer[p].append(replacementColor);
 
-            queue.enqueue(QPoint(p.x() + 1, p.y()));
-            queue.enqueue(QPoint(p.x() - 1, p.y()));
-            queue.enqueue(QPoint(p.x(), p.y() + 1));
-            queue.enqueue(QPoint(p.x(), p.y() - 1));
+            for (int i = 0; i < dirCount; ++i) {
+                QPoint np(p.x() + dirs[i].x(), p.y() + dirs[i].y());
+                if (np.x() == 0 || np.y() == 0) continue;
+                if (!visited.contains(np) && qAbs(np.x()) <= halfW && qAbs(np.y()) <= halfH) {
+                    visited.insert(np);
+                    queue.enqueue(np);
+                }
+            }
         }
     }
 }
 
-void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, const QColor &boundaryColor)
+void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, const QColor &)
 {
-    Q_UNUSED(boundaryColor);
-    // Do not fill if the start point is already the same fill color.
-    if (fillColor.isValid() && pixelBuffer.contains(startNode) && pixelBuffer[startNode].contains(fillColor))
-        return;
+    int halfW = ui->frame->width() / 2;
+    int halfH = ui->frame->height() / 2;
 
-    int maxX = originx / gridsize + 1;
-    int maxY = originy / gridsize + 1;
-    int minX = -maxX;
-    int minY = -maxY;
+    if (pixelBuffer.contains(startNode)) return;
 
-    const int maxFillCells = 5000;
+    const int maxFillCells = 50000;
 
     QQueue<QPoint> queue;
     queue.enqueue(startNode);
     QSet<QPoint> visited;
+    visited.insert(startNode);
+
+    QPoint dirs4[] = { {1,0},{-1,0},{0,1},{0,-1} };
+    QPoint dirs8[] = { {1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1} };
+    QPoint *dirs = (fillConnectivity == 8) ? dirs8 : dirs4;
+    int dirCount = (fillConnectivity == 8) ? 8 : 4;
 
     while (!queue.isEmpty()) {
         if (visited.size() >= maxFillCells) break;
         QPoint p = queue.dequeue();
-        if (visited.contains(p)) continue;
-        if (p.x() < minX || p.x() > maxX || p.y() < minY || p.y() > maxY) continue;
 
-        // Stop at any occupied pixel (a committed shape edge or fill).
-        bool isBoundary = pixelBuffer.contains(p);
+        if (pixelBuffer.contains(p)) continue;
 
-        if (!isBoundary) {
-            visited.insert(p);
-            if (!pixelBuffer[p].contains(fillColor))
-                pixelBuffer[p].append(fillColor);
+        if (!pixelBuffer[p].contains(fillColor))
+            pixelBuffer[p].append(fillColor);
 
-            queue.enqueue(QPoint(p.x() + 1, p.y()));
-            queue.enqueue(QPoint(p.x() - 1, p.y()));
-            queue.enqueue(QPoint(p.x(), p.y() + 1));
-            queue.enqueue(QPoint(p.x(), p.y() - 1));
+        for (int i = 0; i < dirCount; ++i) {
+            QPoint np(p.x() + dirs[i].x(), p.y() + dirs[i].y());
+            if (!visited.contains(np) && qAbs(np.x()) <= halfW && qAbs(np.y()) <= halfH) {
+                visited.insert(np);
+                queue.enqueue(np);
+            }
         }
     }
 }
