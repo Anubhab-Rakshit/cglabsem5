@@ -27,6 +27,9 @@
 #include <QMessageBox>
 #include <QSvgRenderer>
 #include <QScrollArea>
+#include <QKeyEvent>
+#include <QUndoStack>
+#include <QUndoCommand>
 
 namespace Ui {
 class MainWindow;
@@ -39,6 +42,26 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+    struct Shape {
+        enum Type { LINE, CIRCLE, ELLIPSE, POLYGON, BEZIER };
+        Type type;
+        QColor color;
+        bool selected;
+        QPoint lineP1, lineP2;
+        QPoint circleCenter;
+        int circleRadius;
+        QPoint ellipseCenter;
+        int ellipseRx, ellipseRy;
+        QVector<QPoint> polygonVertices;
+        QVector<QPoint> bezierControlPoints;
+        QVector<QPoint> bezierCurvePoints;
+        QHash<QPoint, QList<QColor>> shapePixels;
+    };
+
+    struct SceneSnapshot {
+        QVector<Shape> shapes;
+    };
 
 private slots:
     void showmouseposition(QPoint &pos);
@@ -92,8 +115,57 @@ private slots:
     void handleClearCanvasClicked();
     void handleToggleNavbar();
 
+    // Transformation Slots
+    void handleTransformTranslate();
+    void handleTransformRotate();
+    void handleTransformScale();
+    void handleTransformShear();
+    void handleTransformReflectX();
+    void handleTransformReflectY();
+    void handleTransformReflectOrigin();
+    void handleTransformArbitraryLine();
+    void handleTransformArbitraryPoint();
+
+    // Playback Slots
+    void onStepBackClicked();
+    void onStepForwardClicked();
+    void onScrubSliderChanged(int value);
+
+    // Bezier Slots
+    void handleBezierAnimate();
+    void handleBezierDrawInstantly();
+    void handleBezierClear();
+    void animateBezierStep();
+    QVector<QPoint> calculateBezierCurve();
+    QVector<QPoint> deCasteljauStep(const QVector<QPoint> &pts, double t);
+
+    // Transformation Math
+    void multiplyMatrix3x3(double m1[3][3], double m2[3][3], double result[3][3]);
+    QPoint transformPoint(const QPoint& p, double T[3][3]);
+    void applyTransformationMatrix(double T[3][3]);
+
+    // Playback helpers
+    void syncPlaybackState();
+    int getActiveAnimationStep() const;
+    void setActiveAnimationStep(int step);
+    int getActiveAnimationPointCount() const;
+    QVector<QPoint> getActiveAnimationPoints() const;
+
+    // Scene / Undo / Zoom
+    void pushUndo();
+    void undo();
+    void redo();
+    void deleteSelectedShape();
+    int hitTestShape(const QPoint &logical) const;
+    void addShapeToScene(Shape &s);
+    void drawSceneShapes(QPainter &painter);
+    void rasterizeShapeToBuffer(Shape &s);
+    void removeShapePixelsFromBuffer(const Shape &s);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
     Ui::MainWindow *ui;
@@ -150,11 +222,13 @@ private:
     int draggingpoint;
     bool isDragging;
     int selectedalgorithm;
+    bool showTrace;
 
     QTimer *lineAnimationTimer;
     int lineAnimationStep;
     QVector<QPoint> lineAnimationPoints;
     QVector<QString> lineAnimationLogs;
+    QVector<QString> traceTags;
 
     qint64 ddatime;
     qint64 bresenhamtime;
@@ -225,10 +299,11 @@ private:
     QHash<QPoint, QList<QColor>> pixelBuffer;
     
     // Editor UI Architecture State
-    enum ActiveTool { TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE, TOOL_POLYGON, TOOL_FLOOD_FILL, TOOL_BOUNDARY_FILL, TOOL_SCANLINE_FILL };
+    enum ActiveTool { TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE, TOOL_POLYGON, TOOL_FLOOD_FILL, TOOL_BOUNDARY_FILL, TOOL_SCANLINE_FILL, TOOL_TRANSFORM, TOOL_CURVE };
     ActiveTool currentTool;
     QStackedWidget *settingsStack;
     QList<QToolButton*> sidebarButtons;
+    QComboBox *comboPolygonMode;
     QFrame *navbar;
     QLabel *toolNameLabel;
     QPushButton *btnToggleNavbar;
@@ -246,6 +321,39 @@ private:
     bool colorPickerActive;
     int colorPickerMode; // 0=fill, 1=edge, 2=boundary
     int fillConnectivity; // 4 or 8
+
+    // Bezier Curve State
+    QVector<QPoint> bezierControlPoints;  // P0, P1, P2, P3 (max 4)
+    QVector<QPoint> bezierCurvePoints;    // evaluated curve at t=0..1
+    QVector<QString> bezierLogs;
+    QVector<QString> bezierTraceTags;
+    int bezierAnimStep;
+    QVector<QPoint> bezierAnimPoints;
+    QTimer *bezierAnimTimer;
+    QColor bezierColor;
+
+    // Transform Overlay State (visible arb line / arb point)
+    bool hasArbLine;
+    double arbLineX1, arbLineY1, arbLineX2, arbLineY2;
+    bool hasArbPoint;
+    double arbPointX, arbPointY;
+    bool keepOriginalOnTransform;
+
+    // ---- PERSISTENT SCENE ----
+    QVector<Shape> scene;
+    int selectedShapeIndex;
+
+    // ---- UNDO/REDO ----
+    QVector<SceneSnapshot> undoStack;
+    QVector<SceneSnapshot> redoStack;
+
+    // ---- ZOOM / PAN ----
+    double viewScale;
+    double viewOffsetX;
+    double viewOffsetY;
+    bool isPanning;
+    QPoint panStart;
+    QPoint lastDragLogical;
     
     // Legacy Animation logic references...
     float animationSpeedMultiplier;

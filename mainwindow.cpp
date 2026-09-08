@@ -13,6 +13,68 @@
 #include <QAction>
 #include <algorithm>
 
+// ---- TRACE TAG EXTRACTION ----
+// Extracts the key numeric value from each algorithm's log format
+
+static QString extractTraceTag(const QVector<QString> &logs, int index, int algoType) {
+    if (index < 0 || index >= logs.size()) return {};
+    QString log = logs[index];
+
+    if (algoType == 0) {
+        // DDA: "Step %1: X=%2, Y=%3 (Rounded: %4, %5)" -> "X=3 Y=5"
+        int ri = log.indexOf("Rounded: ");
+        if (ri >= 0) {
+            QString val = log.mid(ri + 9);
+            val.chop(1); // remove trailing ")"
+            return "X=" + val;
+        }
+        return log;
+    } else if (algoType == 1) {
+        // Bresenham: "Step %1: X=%2, Y=%3 | Error P=%4" -> "P=42"
+        int pi = log.indexOf("Error P=");
+        if (pi >= 0) return "P=" + log.mid(pi + 8);
+        return log;
+    } else if (algoType == 2) {
+        // Circle/Ellipse Polar: "Theta=%1 rad | X=%2, Y=%3" -> "θ=0.524"
+        int ti = log.indexOf("Theta=");
+        if (ti >= 0) {
+            QString val = log.mid(ti + 6);
+            int ri = val.indexOf(" rad");
+            if (ri >= 0) val.truncate(ri);
+            return "\xce\xb8=" + val;  // θ
+        }
+        return log;
+    } else if (algoType == 3) {
+        // Circle/Ellipse Midpoint: "P=%3" or "P1=%3" or "P2=%3"
+        int pi = log.indexOf("P1=");
+        if (pi >= 0) return "P1=" + log.mid(pi + 3);
+        pi = log.indexOf("P2=");
+        if (pi >= 0) return "P2=" + log.mid(pi + 3);
+        pi = log.indexOf("P=");
+        if (pi >= 0) return "P=" + log.mid(pi + 2);
+        return log;
+    } else if (algoType == 4) {
+        // Circle/Cartesian: "X=%1 | Evaluated Y=%2" -> "X=3 Y=5"
+        int xi = log.indexOf("| Evaluated Y=");
+        if (xi >= 0) {
+            QString left = log.left(xi);  // "X=3"
+            QString right = log.mid(xi + 14); // "5"
+            return left + " " + right;
+        }
+        // Cartesian: "Cartesian: X=%1 | Evaluated Y=%2"
+        xi = log.indexOf("Cartesian: X=");
+        if (xi >= 0) {
+            QString rest = log.mid(xi + 13);
+            int pi = rest.indexOf("| Evaluated Y=");
+            if (pi >= 0) {
+                return "X=" + rest.left(pi) + " Y=" + rest.mid(pi + 14);
+            }
+        }
+        return log;
+    }
+    return log;
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -81,17 +143,21 @@ MainWindow::MainWindow(QWidget *parent)
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><line x1='5' y1='27' x2='27' y2='5' stroke='#a6adc8' stroke-width='2.5' stroke-linecap='round'/></svg>",
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='11' fill='none' stroke='#a6adc8' stroke-width='2.5'/></svg>",
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><ellipse cx='16' cy='16' rx='13' ry='8' fill='none' stroke='#a6adc8' stroke-width='2.5'/></svg>",
-        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#a6adc8' stroke-width='2.5' stroke-linejoin='round'/></svg>"
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#a6adc8' stroke-width='2.5' stroke-linejoin='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M6 26 L16 6 L26 26 Z' fill='none' stroke='#a6adc8' stroke-width='2.5' stroke-linejoin='round'/><path d='M2 16 L6 12 M2 16 L6 20 M30 16 L26 12 M30 16 L26 20' stroke='#a6adc8' stroke-width='2.5' stroke-linecap='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M5 27 C10 5, 22 27, 27 5' fill='none' stroke='#a6adc8' stroke-width='2.5'/><circle cx='5' cy='27' r='2' fill='#a6adc8'/><circle cx='10' cy='5' r='2' fill='#a6adc8'/><circle cx='22' cy='27' r='2' fill='#a6adc8'/><circle cx='27' cy='5' r='2' fill='#a6adc8'/></svg>"
     };
     const char* svgChecked[] = {
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><line x1='5' y1='27' x2='27' y2='5' stroke='#11111b' stroke-width='3' stroke-linecap='round'/></svg>",
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><circle cx='16' cy='16' r='11' fill='none' stroke='#11111b' stroke-width='3'/></svg>",
         "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><ellipse cx='16' cy='16' rx='13' ry='8' fill='none' stroke='#11111b' stroke-width='3'/></svg>",
-        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#11111b' stroke-width='3' stroke-linejoin='round'/></svg>"
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><polygon points='16,3 29,27 3,27' fill='none' stroke='#11111b' stroke-width='3' stroke-linejoin='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M6 26 L16 6 L26 26 Z' fill='none' stroke='#11111b' stroke-width='3' stroke-linejoin='round'/><path d='M2 16 L6 12 M2 16 L6 20 M30 16 L26 12 M30 16 L26 20' stroke='#11111b' stroke-width='3' stroke-linecap='round'/></svg>",
+        "<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M5 27 C10 5, 22 27, 27 5' fill='none' stroke='#11111b' stroke-width='3'/><circle cx='5' cy='27' r='2' fill='#11111b'/><circle cx='10' cy='5' r='2' fill='#11111b'/><circle cx='22' cy='27' r='2' fill='#11111b'/><circle cx='27' cy='5' r='2' fill='#11111b'/></svg>"
     };
-    QStringList toolNames = {"Line", "Circle", "Ellipse", "Polygon"};
+    QStringList toolNames = {"Line", "Circle", "Ellipse", "Polygon", "Transform", "Curve"};
     QList<QPixmap> normalPixList, checkedPixList;
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 6; ++i) {
         QSvgRenderer r{QByteArray(svgNormal[i])};
         QPixmap nPix(32, 32); nPix.fill(Qt::transparent);
         QPainter np(&nPix); r.render(&np); np.end();
@@ -238,7 +304,7 @@ MainWindow::MainWindow(QWidget *parent)
     lPolygon->setContentsMargins(6, 2, 6, 2);
     lPolygon->setSpacing(6);
 
-    QComboBox* comboPolygonMode = new QComboBox(pagePolygon);
+    comboPolygonMode = new QComboBox(pagePolygon);
     comboPolygonMode->setFixedWidth(140);
     comboPolygonMode->addItems({"Draw Polygon", "Flood Fill", "Boundary Fill", "Scanline Fill"});
     connect(comboPolygonMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
@@ -279,6 +345,191 @@ MainWindow::MainWindow(QWidget *parent)
     lPolygon->addStretch();
     settingsStack->addWidget(pagePolygon);
 
+    // ---- TRANSFORM PAGE ----
+    QWidget* pageTransform = new QWidget();
+    pageTransform->setStyleSheet("background-color: #1e1e2e;");
+    QHBoxLayout* lTransform = new QHBoxLayout(pageTransform);
+    lTransform->setContentsMargins(6, 14, 6, 4);
+
+    QScrollArea* scrollTransform = new QScrollArea();
+    scrollTransform->setWidgetResizable(true);
+    scrollTransform->setFrameShape(QFrame::NoFrame);
+    scrollTransform->setWidget(pageTransform);
+    scrollTransform->setFixedHeight(130);
+    scrollTransform->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollTransform->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollTransform->viewport()->setAutoFillBackground(false);
+    scrollTransform->setStyleSheet("QScrollArea { background: transparent; } QScrollArea > QWidget > QWidget { background: #1e1e2e; } QScrollBar:horizontal { height: 8px; background: #1e1e2e; } QScrollBar::handle:horizontal { background: #45475a; border-radius: 4px; } QScrollBar::add-line, QScrollBar::sub-line { width: 0; }");
+
+    QString groupStyle = "QGroupBox { color: #a6adc8; font-weight: bold; font-size: 10px; border: 1px solid #45475a; border-radius: 4px; margin-top: 14px; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 4px; left: 8px; }";
+    QString spinStyle = "QSpinBox, QDoubleSpinBox { background-color: #181825; color: #cdd6f4; border: 1px solid #313244; border-radius: 4px; padding: 2px; }";
+    QString btnStyle = "QPushButton { background-color: #313244; color: #cdd6f4; border: none; border-radius: 4px; padding: 4px 8px; } QPushButton:hover { background-color: #45475a; }";
+
+    // Translate
+    QGroupBox* gbTranslate = new QGroupBox("Translate");
+    gbTranslate->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lTrans = new QHBoxLayout(gbTranslate);
+    lTrans->setContentsMargins(4, 8, 4, 4);
+    QSpinBox* spinTx = new QSpinBox(); spinTx->setObjectName("spinTx"); spinTx->setRange(-1000, 1000); spinTx->setPrefix("x: ");
+    QSpinBox* spinTy = new QSpinBox(); spinTy->setObjectName("spinTy"); spinTy->setRange(-1000, 1000); spinTy->setPrefix("y: ");
+    QPushButton* btnTranslate = new QPushButton("Apply");
+    lTrans->addWidget(spinTx); lTrans->addWidget(spinTy); lTrans->addWidget(btnTranslate);
+    gbTranslate->setMinimumWidth(220);
+    lTransform->addWidget(gbTranslate);
+
+    // Rotate
+    QGroupBox* gbRotate = new QGroupBox("Rotate");
+    gbRotate->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lRot = new QHBoxLayout(gbRotate);
+    lRot->setContentsMargins(4, 8, 4, 4);
+    QDoubleSpinBox* spinAngle = new QDoubleSpinBox(); spinAngle->setObjectName("spinAngle"); spinAngle->setRange(-360, 360); spinAngle->setSuffix("°");
+    QPushButton* btnRotate = new QPushButton("Apply");
+    lRot->addWidget(spinAngle); lRot->addWidget(btnRotate);
+    gbRotate->setMinimumWidth(150);
+    lTransform->addWidget(gbRotate);
+
+    // Scale
+    QGroupBox* gbScale = new QGroupBox("Scale");
+    gbScale->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lScale = new QHBoxLayout(gbScale);
+    lScale->setContentsMargins(4, 8, 4, 4);
+    QDoubleSpinBox* spinSx = new QDoubleSpinBox(); spinSx->setObjectName("spinSx"); spinSx->setValue(1.0); spinSx->setSingleStep(0.1); spinSx->setPrefix("x: ");
+    QDoubleSpinBox* spinSy = new QDoubleSpinBox(); spinSy->setObjectName("spinSy"); spinSy->setValue(1.0); spinSy->setSingleStep(0.1); spinSy->setPrefix("y: ");
+    QPushButton* btnScale = new QPushButton("Apply");
+    lScale->addWidget(spinSx); lScale->addWidget(spinSy); lScale->addWidget(btnScale);
+    gbScale->setMinimumWidth(220);
+    lTransform->addWidget(gbScale);
+
+    // Shear
+    QGroupBox* gbShear = new QGroupBox("Shear");
+    gbShear->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lShear = new QHBoxLayout(gbShear);
+    lShear->setContentsMargins(4, 8, 4, 4);
+    QDoubleSpinBox* spinShx = new QDoubleSpinBox(); spinShx->setObjectName("spinShx"); spinShx->setSingleStep(0.1); spinShx->setPrefix("x: "); spinShx->setRange(-10.0, 10.0);
+    QDoubleSpinBox* spinShy = new QDoubleSpinBox(); spinShy->setObjectName("spinShy"); spinShy->setSingleStep(0.1); spinShy->setPrefix("y: "); spinShy->setRange(-10.0, 10.0);
+    QPushButton* btnShear = new QPushButton("Apply");
+    lShear->addWidget(spinShx); lShear->addWidget(spinShy); lShear->addWidget(btnShear);
+    gbShear->setMinimumWidth(220);
+    lTransform->addWidget(gbShear);
+
+    // Reflect
+    QGroupBox* gbReflect = new QGroupBox("Reflect");
+    gbReflect->setStyleSheet(groupStyle + btnStyle);
+    QHBoxLayout* lRef = new QHBoxLayout(gbReflect);
+    lRef->setContentsMargins(4, 8, 4, 4);
+    QPushButton* btnRefX = new QPushButton("X-Axis");
+    QPushButton* btnRefY = new QPushButton("Y-Axis");
+    QPushButton* btnRefO = new QPushButton("Origin");
+    lRef->addWidget(btnRefX); lRef->addWidget(btnRefY); lRef->addWidget(btnRefO);
+    gbReflect->setMinimumWidth(180);
+    lTransform->addWidget(gbReflect);
+
+    // Arb Line Reflect
+    QGroupBox* gbArbLine = new QGroupBox("Reflect Arb Line");
+    gbArbLine->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lArbLine = new QHBoxLayout(gbArbLine);
+    lArbLine->setContentsMargins(4, 8, 4, 4);
+    QSpinBox* alX1 = new QSpinBox(); alX1->setObjectName("alX1"); alX1->setRange(-1000, 1000); alX1->setPrefix("x1:");
+    QSpinBox* alY1 = new QSpinBox(); alY1->setObjectName("alY1"); alY1->setRange(-1000, 1000); alY1->setPrefix("y1:");
+    QSpinBox* alX2 = new QSpinBox(); alX2->setObjectName("alX2"); alX2->setRange(-1000, 1000); alX2->setPrefix("x2:"); alX2->setValue(10);
+    QSpinBox* alY2 = new QSpinBox(); alY2->setObjectName("alY2"); alY2->setRange(-1000, 1000); alY2->setPrefix("y2:"); alY2->setValue(10);
+    QPushButton* btnArbLine = new QPushButton("Apply");
+    lArbLine->addWidget(alX1); lArbLine->addWidget(alY1); lArbLine->addWidget(alX2); lArbLine->addWidget(alY2); lArbLine->addWidget(btnArbLine);
+    gbArbLine->setMinimumWidth(380);
+    lTransform->addWidget(gbArbLine);
+
+    // Arb Point Rotate
+    QGroupBox* gbArbPt = new QGroupBox("Rotate Arb Point");
+    gbArbPt->setStyleSheet(groupStyle + spinStyle + btnStyle);
+    QHBoxLayout* lArbPt = new QHBoxLayout(gbArbPt);
+    lArbPt->setContentsMargins(4, 8, 4, 4);
+    QSpinBox* apX = new QSpinBox(); apX->setObjectName("apX"); apX->setRange(-1000, 1000); apX->setPrefix("x:");
+    QSpinBox* apY = new QSpinBox(); apY->setObjectName("apY"); apY->setRange(-1000, 1000); apY->setPrefix("y:");
+    QDoubleSpinBox* apA = new QDoubleSpinBox(); apA->setObjectName("apA"); apA->setRange(-360, 360); apA->setSuffix("°");
+    QPushButton* btnArbPt = new QPushButton("Apply");
+    lArbPt->addWidget(apX); lArbPt->addWidget(apY); lArbPt->addWidget(apA); lArbPt->addWidget(btnArbPt);
+    gbArbPt->setMinimumWidth(260);
+    lTransform->addWidget(gbArbPt);
+
+    QCheckBox* chkKeepOriginal = new QCheckBox("Keep Original (Ghost)");
+    chkKeepOriginal->setObjectName("chkKeepOriginal");
+    chkKeepOriginal->setStyleSheet("QCheckBox { color: #a6adc8; } QCheckBox::indicator { width: 14px; height: 14px; }");
+    chkKeepOriginal->setToolTip("When enabled, transforms keep the original shape as a ghost");
+    lTransform->addWidget(chkKeepOriginal);
+    connect(chkKeepOriginal, &QCheckBox::toggled, this, [this](bool checked) {
+        keepOriginalOnTransform = checked;
+    });
+
+    lTransform->addStretch();
+    lTransform->setSpacing(8);
+    settingsStack->addWidget(scrollTransform);
+
+    // ---- BEZIER CURVE PAGE ----
+    QWidget* pageCurve = new QWidget();
+    pageCurve->setStyleSheet("background-color: #1e1e2e;");
+    QHBoxLayout* lCurve = new QHBoxLayout(pageCurve);
+    lCurve->setContentsMargins(6, 2, 6, 2);
+    lCurve->setSpacing(8);
+
+    QString curveGroupStyle = "QGroupBox { color: #a6adc8; font-weight: bold; font-size: 10px; border: 1px solid #45475a; border-radius: 4px; margin-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 8px; top: -6px; }";
+    QString curveBtnStyle = "QPushButton { background-color: #313244; color: #cdd6f4; border: none; border-radius: 4px; padding: 4px 8px; } QPushButton:hover { background-color: #45475a; }";
+
+    // Curve Controls
+    QGroupBox* gbCurveCtrl = new QGroupBox("Curve Controls");
+    gbCurveCtrl->setStyleSheet(curveGroupStyle);
+    QVBoxLayout* lCurveCtrl = new QVBoxLayout(gbCurveCtrl);
+    lCurveCtrl->setContentsMargins(4, 8, 4, 4);
+    QLabel* lblCurveInfo = new QLabel("Click 4 control points on canvas");
+    lblCurveInfo->setStyleSheet("color: #a6adc8; font-size: 10px;");
+    lCurveCtrl->addWidget(lblCurveInfo);
+    QPushButton* btnCurveDraw = new QPushButton("Draw Instantly");
+    QPushButton* btnCurveAnimate = new QPushButton("Animate");
+    QPushButton* btnCurveClear = new QPushButton("Clear");
+    btnCurveDraw->setStyleSheet(curveBtnStyle);
+    btnCurveAnimate->setStyleSheet(curveBtnStyle);
+    btnCurveClear->setStyleSheet(curveBtnStyle);
+    lCurveCtrl->addWidget(btnCurveDraw);
+    lCurveCtrl->addWidget(btnCurveAnimate);
+    lCurveCtrl->addWidget(btnCurveClear);
+    gbCurveCtrl->setMinimumWidth(160);
+    lCurve->addWidget(gbCurveCtrl);
+
+    // Curve Perf
+    QGroupBox* gbCurvePerf = new QGroupBox("Performance");
+    gbCurvePerf->setStyleSheet(curveGroupStyle);
+    QVBoxLayout* lCurvePerf = new QVBoxLayout(gbCurvePerf);
+    lCurvePerf->setContentsMargins(4, 8, 4, 4);
+    QLabel* lblCurveTime = new QLabel("Bezier Time: -");
+    QLabel* lblCurveCount = new QLabel("Curve Points: -");
+    QLabel* lblCurveSteps = new QLabel("Steps: -");
+    lblCurveTime->setStyleSheet("color: #a6adc8; font-size: 10px;");
+    lblCurveCount->setStyleSheet("color: #a6adc8; font-size: 10px;");
+    lblCurveSteps->setStyleSheet("color: #a6adc8; font-size: 10px;");
+    lCurvePerf->addWidget(lblCurveTime);
+    lCurvePerf->addWidget(lblCurveCount);
+    lCurvePerf->addWidget(lblCurveSteps);
+    gbCurvePerf->setMinimumWidth(160);
+    lCurve->addWidget(gbCurvePerf);
+
+    lCurve->addStretch();
+    settingsStack->addWidget(pageCurve);
+
+    // Connections
+    connect(btnTranslate, &QPushButton::clicked, this, &MainWindow::handleTransformTranslate);
+    connect(btnRotate, &QPushButton::clicked, this, &MainWindow::handleTransformRotate);
+    connect(btnScale, &QPushButton::clicked, this, &MainWindow::handleTransformScale);
+    connect(btnShear, &QPushButton::clicked, this, &MainWindow::handleTransformShear);
+    connect(btnRefX, &QPushButton::clicked, this, &MainWindow::handleTransformReflectX);
+    connect(btnRefY, &QPushButton::clicked, this, &MainWindow::handleTransformReflectY);
+    connect(btnRefO, &QPushButton::clicked, this, &MainWindow::handleTransformReflectOrigin);
+    connect(btnArbLine, &QPushButton::clicked, this, &MainWindow::handleTransformArbitraryLine);
+    connect(btnArbPt, &QPushButton::clicked, this, &MainWindow::handleTransformArbitraryPoint);
+
+    // Bezier connections
+    connect(btnCurveDraw, &QPushButton::clicked, this, &MainWindow::handleBezierDrawInstantly);
+    connect(btnCurveAnimate, &QPushButton::clicked, this, &MainWindow::handleBezierAnimate);
+    connect(btnCurveClear, &QPushButton::clicked, this, &MainWindow::handleBezierClear);
+
     rightLayout->addWidget(settingsStack);
 
     // ---- DRAWING FRAME ----
@@ -290,6 +541,109 @@ MainWindow::MainWindow(QWidget *parent)
     ui->groupBoxDebugger->setFixedHeight(120);
     rightLayout->addWidget(ui->groupBoxDebugger);
 
+    // ---- PLAYBACK BAR ----
+    QFrame* playbackBar = new QFrame();
+    playbackBar->setFixedHeight(32);
+    playbackBar->setStyleSheet("QFrame { background-color: #181825; border-bottom: 1px solid #313244; }");
+    QHBoxLayout* lPlayback = new QHBoxLayout(playbackBar);
+    lPlayback->setContentsMargins(8, 2, 8, 2);
+    lPlayback->setSpacing(6);
+
+    QString pbBtnStyle = "QPushButton { background-color: #313244; color: #cdd6f4; border: none; border-radius: 4px; padding: 4px 10px; font-weight: bold; } QPushButton:hover { background-color: #45475a; } QPushButton:disabled { color: #585b70; }";
+    QString pbSliderStyle = "QSlider::groove:horizontal { height: 6px; background: #313244; border-radius: 3px; } QSlider::handle:horizontal { background: #89b4fa; width: 14px; height: 14px; margin: -4px 0; border-radius: 7px; } QSlider::sub-page:horizontal { background: #45475a; border-radius: 3px; }";
+
+    QPushButton* btnStepBack = new QPushButton("\u2039");  // ‹
+    btnStepBack->setObjectName("btnStepBack");
+    btnStepBack->setFixedSize(28, 26);
+    btnStepBack->setStyleSheet(pbBtnStyle);
+    btnStepBack->setToolTip("Step Back");
+
+    QPushButton* btnPlayPause = new QPushButton("\u25B6");  // ▶
+    btnPlayPause->setObjectName("btnPlayPause");
+    btnPlayPause->setFixedSize(28, 26);
+    btnPlayPause->setStyleSheet(pbBtnStyle);
+    btnPlayPause->setToolTip("Play / Pause");
+
+    QPushButton* btnStepForward = new QPushButton("\u203A");  // ›
+    btnStepForward->setObjectName("btnStepForward");
+    btnStepForward->setFixedSize(28, 26);
+    btnStepForward->setStyleSheet(pbBtnStyle);
+    btnStepForward->setToolTip("Step Forward");
+
+    QSlider* scrubSlider = new QSlider(Qt::Horizontal);
+    scrubSlider->setObjectName("scrubSlider");
+    scrubSlider->setRange(0, 0);
+    scrubSlider->setStyleSheet(pbSliderStyle);
+    scrubSlider->setMinimumWidth(120);
+
+    QLabel* lblStepInfo = new QLabel("0 / 0");
+    lblStepInfo->setObjectName("lblStepInfo");
+    lblStepInfo->setStyleSheet("QLabel { color: #a6adc8; border: none; background-color: transparent; font-size: 11px; min-width: 50px; }");
+
+    QCheckBox* chkShowTrace = new QCheckBox("Show Trace");
+    chkShowTrace->setObjectName("chkShowTrace");
+    chkShowTrace->setStyleSheet("QCheckBox { color: #a6adc8; border: none; background-color: transparent; font-size: 11px; } QCheckBox::indicator { width: 14px; height: 14px; } QCheckBox::indicator:checked { background-color: #89b4fa; border-radius: 3px; } QCheckBox::indicator:unchecked { background-color: #313244; border-radius: 3px; }");
+
+    lPlayback->addWidget(btnStepBack);
+    lPlayback->addWidget(btnPlayPause);
+    lPlayback->addWidget(btnStepForward);
+    lPlayback->addSpacing(8);
+    lPlayback->addWidget(scrubSlider, 1);
+    lPlayback->addWidget(lblStepInfo);
+    lPlayback->addSpacing(8);
+    lPlayback->addWidget(chkShowTrace);
+
+    rightLayout->addWidget(playbackBar);
+
+    // Playback connections
+    connect(btnStepBack, &QPushButton::clicked, this, &MainWindow::onStepBackClicked);
+    connect(btnStepForward, &QPushButton::clicked, this, &MainWindow::onStepForwardClicked);
+    connect(btnPlayPause, &QPushButton::clicked, this, [this]() {
+        int step = getActiveAnimationStep();
+        int total = getActiveAnimationPointCount();
+        if (total == 0) {
+            statusBar()->showMessage("No animation to play. Use Animate first.");
+            return;
+        }
+        if (step >= total) {
+            setActiveAnimationStep(0);
+            syncPlaybackState();
+            drawgrid();
+        }
+        // Start/stop the appropriate timer
+        if (currentTool == TOOL_LINE) {
+            if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+            else {
+                calculatealgorithms();
+                int interval = qRound(20 / animationSpeedMultiplier);
+                lineAnimationTimer->start(interval < 1 ? 1 : interval);
+            }
+        } else if (currentTool == TOOL_CIRCLE) {
+            if (animationTimer->isActive()) animationTimer->stop();
+            else {
+                calculateCircleAlgorithms();
+                int interval = qRound(50 / animationSpeedMultiplier);
+                animationTimer->start(interval < 1 ? 1 : interval);
+            }
+        } else if (currentTool == TOOL_ELLIPSE) {
+            if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+            else {
+                calculateEllipseAlgorithms();
+                int interval = qRound(30 / animationSpeedMultiplier);
+                ellipseAnimationTimer->start(interval < 1 ? 1 : interval);
+            }
+        } else if (currentTool == TOOL_CURVE) {
+            if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+            else {
+                handleBezierAnimate();
+            }
+        }
+    });
+    connect(scrubSlider, &QSlider::valueChanged, this, &MainWindow::onScrubSliderChanged);
+    connect(chkShowTrace, &QCheckBox::toggled, this, [this](bool checked) {
+        showTrace = checked;
+        drawgrid();
+    });
     mainLayout->addWidget(sidebar);
     mainLayout->addLayout(rightLayout, 1);
 
@@ -304,6 +658,19 @@ MainWindow::MainWindow(QWidget *parent)
     colorPickerActive = false;
     colorPickerMode = 0;
     fillConnectivity = 4;
+    showTrace = false;
+    bezierAnimStep = -1;
+    bezierColor = QColor(248, 187, 208); // soft pink
+    bezierAnimTimer = new QTimer(this);
+    connect(bezierAnimTimer, &QTimer::timeout, this, &MainWindow::animateBezierStep);
+    hasArbLine = false;
+    hasArbPoint = false;
+    keepOriginalOnTransform = false;
+    selectedShapeIndex = -1;
+    viewScale = 1.0;
+    viewOffsetX = 0;
+    viewOffsetY = 0;
+    isPanning = false;
 
     connect(btnPolygonClear, &QPushButton::clicked, this, &MainWindow::handlePolygonClearClicked);
     connect(btnPolygonClose, &QPushButton::clicked, this, &MainWindow::handlePolygonCloseClicked);
@@ -422,6 +789,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->frame, SIGNAL(sendMouseDrag(QPoint&)), this, SLOT(mouse_dragged(QPoint&)));
     connect(ui->frame, SIGNAL(Mouse_Release()), this, SLOT(mouse_released()));
     connect(ui->frame, SIGNAL(sendMouseWheel(int)), this, SLOT(mouse_wheel(int)));
+
+    ui->frame->installEventFilter(this);
 
     drawgrid();
     statusBar()->showMessage("Select Point 1");
@@ -737,6 +1106,32 @@ void MainWindow::calculateCircleAlgorithms()
     ui->lblPolarCount->setText("Polar Pixels: " + QString::number(polarSet.size()));
     ui->lblMidpointCount->setText("Midpoint Pixels: " + QString::number(midSet.size()));
     ui->lblCartesianCount->setText("Cartesian Pixels: " + QString::number(cartSet.size()));
+
+    // ---- CIRCLE ACCURACY REPORT ----
+    if (radius > 0) {
+        auto radialError = [radius](const QSet<QPoint> &pts) -> QPair<double,double> {
+            double avgErr = 0, maxErr = 0;
+            for (const QPoint &p : pts) {
+                double dist = qSqrt((double)p.x() * p.x() + (double)p.y() * p.y());
+                double err = qAbs(dist - radius);
+                avgErr += err;
+                if (err > maxErr) maxErr = err;
+            }
+            avgErr /= qMax(1, pts.size());
+            return {avgErr, maxErr};
+        };
+
+        auto [polarAvg, polarMax] = radialError(polarSet);
+        auto [midAvg, midMax] = radialError(midSet);
+        auto [cartAvg, cartMax] = radialError(cartSet);
+
+        ui->textDebugger->append(QString("<span style='color:#89b4fa'>[Circle Accuracy]</span> "
+            "Radius=%1 | Polar: avg err=%2 max err=%3 | Mid: avg=%4 max=%5 | Cart: avg=%6 max=%7")
+            .arg(radius)
+            .arg(polarAvg, 0, 'f', 3).arg(polarMax, 0, 'f', 3)
+            .arg(midAvg, 0, 'f', 3).arg(midMax, 0, 'f', 3)
+            .arg(cartAvg, 0, 'f', 3).arg(cartMax, 0, 'f', 3));
+    }
 }
 
 void MainWindow::drawCircleSymmetry(QPainter &painter, const QVector<QPoint> &points, const QColor &color, bool addToBuffer)
@@ -778,6 +1173,45 @@ void MainWindow::calculatealgorithms()
     ui->bresenham_time_label->setText("Bresenham Time: " + formattime(bresenhamtime));
     ui->lblDdaCount->setText("DDA Pixels: " + QString::number(ddaSet.size()));
     ui->lblBresenhamCount->setText("Bresenham Pixels: " + QString::number(bresSet.size()));
+
+    // ---- LINE ACCURACY REPORT ----
+    double dx = point2.x() - point1.x();
+    double dy = point2.y() - point1.y();
+    double len = qSqrt(dx * dx + dy * dy);
+    if (len > 0) {
+        double nx = -dy / len;  // normal to line
+        double ny = dx / len;
+
+        // Perpendicular error: avg/max distance of each pixel from ideal line
+        double ddaAvgErr = 0, ddaMaxErr = 0;
+        for (const QPoint &p : ddapoints) {
+            double dist = qAbs((p.x() - point1.x()) * nx + (p.y() - point1.y()) * ny);
+            ddaAvgErr += dist;
+            if (dist > ddaMaxErr) ddaMaxErr = dist;
+        }
+        ddaAvgErr /= qMax(1, ddapoints.size());
+
+        double bresAvgErr = 0, bresMaxErr = 0;
+        for (const QPoint &p : bresenhampoints) {
+            double dist = qAbs((p.x() - point1.x()) * nx + (p.y() - point1.y()) * ny);
+            bresAvgErr += dist;
+            if (dist > bresMaxErr) bresMaxErr = dist;
+        }
+        bresAvgErr /= qMax(1, bresenhampoints.size());
+
+        // Overlap ratio: Jaccard similarity between DDA and Bresenham pixel sets
+        QSet<QPoint> intersection = ddaSet;
+        intersection.intersect(bresSet);
+        QSet<QPoint> unionSet = ddaSet;
+        unionSet.unite(bresSet);
+        double overlap = unionSet.isEmpty() ? 0.0 : (double)intersection.size() / unionSet.size() * 100.0;
+
+        ui->textDebugger->append(QString("<span style='color:#89b4fa'>[Line Accuracy]</span> "
+            "DDA: avg err=%1 max err=%2 | Bres: avg err=%3 max err=%4 | Overlap: %5%")
+            .arg(ddaAvgErr, 0, 'f', 3).arg(ddaMaxErr, 0, 'f', 3)
+            .arg(bresAvgErr, 0, 'f', 3).arg(bresMaxErr, 0, 'f', 3)
+            .arg(overlap, 0, 'f', 1));
+    }
 }
 
 void MainWindow::drawdda(QPainter &painter, const QVector<QPoint> &points, bool addToBuffer)
@@ -848,65 +1282,72 @@ void MainWindow::drawgrid()
 
     if (haspoint1 && haspoint2 && linevisible)
     {
-        if (selectedalgorithm == 2) {
-            if (lineAnimationStep >= 0) {
-                int subsetDda = (lineAnimationStep < ddapoints.size()) ? lineAnimationStep : ddapoints.size();
-                int subsetBres = (lineAnimationStep < bresenhampoints.size()) ? lineAnimationStep : bresenhampoints.size();
-                drawdda(painter, ddapoints.mid(0, subsetDda), false);
-                drawbresenham(painter, bresenhampoints.mid(0, subsetBres), false);
+        bool isLineTool = (currentTool == TOOL_LINE);
+        bool isCircleTool = (currentTool == TOOL_CIRCLE);
+
+        if (isLineTool) {
+            if (selectedalgorithm == 2) {
+                if (lineAnimationStep >= 0) {
+                    int subsetDda = (lineAnimationStep < ddapoints.size()) ? lineAnimationStep : ddapoints.size();
+                    int subsetBres = (lineAnimationStep < bresenhampoints.size()) ? lineAnimationStep : bresenhampoints.size();
+                    drawdda(painter, ddapoints.mid(0, subsetDda), false);
+                    drawbresenham(painter, bresenhampoints.mid(0, subsetBres), false);
+                } else {
+                    drawdda(painter, ddapoints, false);
+                    drawbresenham(painter, bresenhampoints, false);
+                }
             } else {
-                drawdda(painter, ddapoints, false);
-                drawbresenham(painter, bresenhampoints, false);
-            }
-        } else {
-            QVector<QPoint> activePoints = (selectedalgorithm == 0) ? ddapoints : bresenhampoints;
-            if (lineAnimationStep >= 0) {
-                int subsetSize = (lineAnimationStep < activePoints.size()) ? lineAnimationStep : activePoints.size();
-                QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
-                if (selectedalgorithm == 0) drawdda(painter, animatedSubset, false);
-                else drawbresenham(painter, animatedSubset, false);
-            } else {
-                if (selectedalgorithm == 0) drawdda(painter, ddapoints, false);
-                else drawbresenham(painter, bresenhampoints, false);
+                QVector<QPoint> activePoints = (selectedalgorithm == 0) ? ddapoints : bresenhampoints;
+                if (lineAnimationStep >= 0) {
+                    int subsetSize = (lineAnimationStep < activePoints.size()) ? lineAnimationStep : activePoints.size();
+                    QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
+                    if (selectedalgorithm == 0) drawdda(painter, animatedSubset, false);
+                    else drawbresenham(painter, animatedSubset, false);
+                } else {
+                    if (selectedalgorithm == 0) drawdda(painter, ddapoints, false);
+                    else drawbresenham(painter, bresenhampoints, false);
+                }
             }
         }
 
-        bool circleToBuffer = (draggingpoint == 0);
+        if (isCircleTool) {
+            bool circleToBuffer = (draggingpoint == 0 && animationStep < 0);
 
-        if (selectedCircleAlgorithm == 3) {
-            if (circleToBuffer) {
-                drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), true);
-                drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), true);
-                drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), true);
-            }
-            if (animationStep >= 0) {
-                int sPolar = (animationStep < polarPoints.size()) ? animationStep : polarPoints.size();
-                int sMid = (animationStep < midpointPoints.size()) ? animationStep : midpointPoints.size();
-                int sCart = (animationStep < cartesianPoints.size()) ? animationStep : cartesianPoints.size();
-                drawCircleSymmetry(painter, polarPoints.mid(0, sPolar), QColor(255, 100, 200), false);
-                drawCircleSymmetry(painter, midpointPoints.mid(0, sMid), QColor(100, 255, 100), false);
-                drawCircleSymmetry(painter, cartesianPoints.mid(0, sCart), QColor(100, 200, 255), false);
-            } else if (!circleToBuffer) {
-                drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), false);
-                drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), false);
-                drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), false);
-            }
-        } else {
-            QVector<QPoint> activePoints;
-            QColor color;
-            if (selectedCircleAlgorithm == 0) { activePoints = polarPoints; color = QColor(255, 100, 200); }
-            else if (selectedCircleAlgorithm == 1) { activePoints = midpointPoints; color = QColor(100, 255, 100); }
-            else { activePoints = cartesianPoints; color = QColor(100, 200, 255); }
-            
-            if (circleToBuffer) {
-                drawCircleSymmetry(painter, activePoints, color, true);
-            }
-            if (animationStep >= 0) {
-                int subsetSize = (animationStep < activePoints.size()) ? animationStep : activePoints.size();
-                QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
-                drawCircleSymmetry(painter, animatedSubset, color, false);
-            } else if (!circleToBuffer) {
-                drawCircleSymmetry(painter, activePoints, color, false);
+            if (selectedCircleAlgorithm == 3) {
+                if (circleToBuffer) {
+                    drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), true);
+                    drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), true);
+                    drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), true);
+                }
+                if (animationStep >= 0) {
+                    int sPolar = (animationStep < polarPoints.size()) ? animationStep : polarPoints.size();
+                    int sMid = (animationStep < midpointPoints.size()) ? animationStep : midpointPoints.size();
+                    int sCart = (animationStep < cartesianPoints.size()) ? animationStep : cartesianPoints.size();
+                    drawCircleSymmetry(painter, polarPoints.mid(0, sPolar), QColor(255, 100, 200), false);
+                    drawCircleSymmetry(painter, midpointPoints.mid(0, sMid), QColor(100, 255, 100), false);
+                    drawCircleSymmetry(painter, cartesianPoints.mid(0, sCart), QColor(100, 200, 255), false);
+                } else if (!circleToBuffer) {
+                    drawCircleSymmetry(painter, polarPoints, QColor(255, 100, 200), false);
+                    drawCircleSymmetry(painter, midpointPoints, QColor(100, 255, 100), false);
+                    drawCircleSymmetry(painter, cartesianPoints, QColor(100, 200, 255), false);
+                }
+            } else {
+                QVector<QPoint> activePoints;
+                QColor color;
+                if (selectedCircleAlgorithm == 0) { activePoints = polarPoints; color = QColor(255, 100, 200); }
+                else if (selectedCircleAlgorithm == 1) { activePoints = midpointPoints; color = QColor(100, 255, 100); }
+                else { activePoints = cartesianPoints; color = QColor(100, 200, 255); }
+                
+                if (circleToBuffer) {
+                    drawCircleSymmetry(painter, activePoints, color, true);
+                }
+                if (animationStep >= 0) {
+                    int subsetSize = (animationStep < activePoints.size()) ? animationStep : activePoints.size();
+                    QVector<QPoint> animatedSubset = activePoints.mid(0, subsetSize);
+                    drawCircleSymmetry(painter, animatedSubset, color, false);
+                } else if (!circleToBuffer) {
+                    drawCircleSymmetry(painter, activePoints, color, false);
+                }
             }
         }
     }
@@ -931,7 +1372,7 @@ void MainWindow::drawgrid()
     }
 
     // Draw active ellipse preview
-    bool ellipseToBuffer = (currentTool == TOOL_ELLIPSE && ellipseVisible && ellipseDraggingPoint == 0);
+    bool ellipseToBuffer = (currentTool == TOOL_ELLIPSE && ellipseVisible && ellipseDraggingPoint == 0 && ellipseAnimationStep < 0);
     if (currentTool == TOOL_ELLIPSE && ellipseVisible) {
             if (selectedEllipseAlgorithm == 3) {
                 if (ellipseToBuffer) {
@@ -996,6 +1437,131 @@ void MainWindow::drawgrid()
                 }
             }
         }
+    }
+
+    // ---- BEZIER CURVE ----
+    if (currentTool == TOOL_CURVE) {
+        // Draw control polygon (dashed)
+        if (bezierControlPoints.size() >= 2) {
+            QPen ctrlPen(QColor(180, 180, 180, 120));
+            ctrlPen.setWidth(1);
+            ctrlPen.setStyle(Qt::DashLine);
+            painter.setPen(ctrlPen);
+            for (int i = 0; i < bezierControlPoints.size() - 1; ++i) {
+                QPoint s1 = logicaltoscreen(bezierControlPoints[i]);
+                QPoint s2 = logicaltoscreen(bezierControlPoints[i + 1]);
+                painter.drawLine(s1, s2);
+            }
+        }
+        // Draw control points
+        for (int i = 0; i < bezierControlPoints.size(); ++i) {
+            QColor ptColor = (i == 0 || i == 3) ? QColor(248, 187, 208) : QColor(137, 180, 250);
+            drawpoint(painter, bezierControlPoints[i], ptColor);
+        }
+        // Draw evaluated curve
+        if (bezierCurvePoints.size() >= 2) {
+            QPen curvePen(bezierColor);
+            curvePen.setWidth(2);
+            painter.setPen(curvePen);
+            for (int i = 0; i < bezierCurvePoints.size() - 1; ++i) {
+                QPoint s1 = logicaltoscreen(bezierCurvePoints[i]);
+                QPoint s2 = logicaltoscreen(bezierCurvePoints[i + 1]);
+                painter.drawLine(s1, s2);
+            }
+        }
+        // Draw animated construction (if stepping)
+        if (bezierAnimStep >= 0 && bezierAnimStep < bezierAnimPoints.size()) {
+            QPoint ap = bezierAnimPoints[bezierAnimStep];
+            QPoint sp = logicaltoscreen(ap);
+            painter.fillRect(sp.x() - gridsize / 2 + 1, sp.y() - gridsize / 2 + 1,
+                             gridsize - 2, gridsize - 2,
+                             QColor(255, 255, 80, 180));
+            painter.setPen(QPen(QColor(255, 255, 80), 1));
+            painter.drawRect(sp.x() - gridsize / 2, sp.y() - gridsize / 2,
+                             gridsize - 1, gridsize - 1);
+            if (bezierAnimStep < bezierTraceTags.size()) {
+                QFont traceFont("Menlo", 9);
+                painter.setFont(traceFont);
+                painter.setPen(QColor(255, 255, 255));
+                painter.drawText(sp.x() + gridsize / 2 + 4, sp.y() + 4,
+                                 bezierTraceTags[bezierAnimStep]);
+            }
+        }
+    }
+
+    // ---- ON-CANVAS ALGORITHM TRACE ----
+    if (showTrace) {
+        int step = getActiveAnimationStep();
+        QVector<QPoint> points = getActiveAnimationPoints();
+        int total = points.size();
+        if (step >= 0 && step < total && step < traceTags.size()) {
+            QPoint traceLocal = points[step];
+            QPoint traceCenter(0, 0);
+            if (currentTool == TOOL_CIRCLE && haspoint1) traceCenter = point1;
+            else if (currentTool == TOOL_ELLIPSE && hasEllipseCenter) traceCenter = ellipseCenter;
+            QPoint traceLogical(traceLocal.x() + traceCenter.x(), traceLocal.y() + traceCenter.y());
+            QPoint traceScreen = logicaltoscreen(traceLogical);
+
+            // Highlight trail (dim) for recent steps
+            int trailStart = qMax(0, step - 5);
+            for (int t = trailStart; t < step; ++t) {
+                if (t >= points.size()) break;
+                QPoint lp = points[t];
+                QPoint sl(lp.x() + traceCenter.x(), lp.y() + traceCenter.y());
+                QPoint sc = logicaltoscreen(sl);
+                float fade = 0.15 + 0.15 * (t - trailStart);
+                painter.fillRect(sc.x() - gridsize / 2 + 1, sc.y() - gridsize / 2 + 1,
+                                 gridsize - 2, gridsize - 2,
+                                 QColor(255, 255, 100, (int)(fade * 255)));
+            }
+
+            // Current step highlight
+            painter.fillRect(traceScreen.x() - gridsize / 2 + 1, traceScreen.y() - gridsize / 2 + 1,
+                             gridsize - 2, gridsize - 2,
+                             QColor(255, 255, 80, 180));
+            painter.setPen(QPen(QColor(255, 255, 80), 1));
+            painter.drawRect(traceScreen.x() - gridsize / 2, traceScreen.y() - gridsize / 2,
+                             gridsize - 1, gridsize - 1);
+
+            // Tag text
+            QFont traceFont("Menlo", 9);
+            painter.setFont(traceFont);
+            painter.setPen(QColor(255, 255, 255));
+            painter.drawText(traceScreen.x() + gridsize / 2 + 4, traceScreen.y() + 4, traceTags[step]);
+        }
+    }
+
+    // ---- PERSISTENT SCENE SHAPES ----
+    drawSceneShapes(painter);
+
+    // ---- TRANSFORM OVERLAYS ----
+    if (hasArbLine) {
+        QPoint s1 = logicaltoscreen(QPoint((int)arbLineX1, (int)arbLineY1));
+        QPoint s2 = logicaltoscreen(QPoint((int)arbLineX2, (int)arbLineY2));
+        QPen linePen(QColor(255, 200, 0, 200));
+        linePen.setWidth(2);
+        linePen.setStyle(Qt::DashDotLine);
+        painter.setPen(linePen);
+        painter.drawLine(s1, s2);
+        drawpoint(painter, QPoint((int)arbLineX1, (int)arbLineY1), QColor(255, 200, 0));
+        drawpoint(painter, QPoint((int)arbLineX2, (int)arbLineY2), QColor(255, 200, 0));
+        QFont ovlFont("Menlo", 9);
+        painter.setFont(ovlFont);
+        painter.setPen(QColor(255, 200, 0));
+        painter.drawText(s2.x() + 8, s2.y() - 4, "Mirror");
+    }
+    if (hasArbPoint) {
+        QPoint sp = logicaltoscreen(QPoint((int)arbPointX, (int)arbPointY));
+        painter.setPen(QPen(QColor(0, 220, 255, 220), 2));
+        int r = gridsize;
+        painter.drawLine(sp.x() - r, sp.y(), sp.x() + r, sp.y());
+        painter.drawLine(sp.x(), sp.y() - r, sp.x(), sp.y() + r);
+        painter.drawRect(sp.x() - r / 2, sp.y() - r / 2, r, r);
+        drawpoint(painter, QPoint((int)arbPointX, (int)arbPointY), QColor(0, 220, 255));
+        QFont ovlFont("Menlo", 9);
+        painter.setFont(ovlFont);
+        painter.setPen(QColor(0, 220, 255));
+        painter.drawText(sp.x() + r + 4, sp.y() - 4, "Pivot");
     }
 
     renderPixelBuffer(painter);
@@ -1064,6 +1630,21 @@ void MainWindow::mouse_pressed()
         return;
     }
 
+    if (currentTool == TOOL_TRANSFORM) {
+        int hit = hitTestShape(logical);
+        if (hit >= 0) {
+            selectedShapeIndex = hit;
+            lastDragLogical = logical;
+            pushUndo();
+            statusBar()->showMessage("Shape selected. Press Delete to remove, or drag to move.");
+            drawgrid();
+            return;
+        }
+        selectedShapeIndex = -1;
+        drawgrid();
+        return;
+    }
+
     if (currentTool == TOOL_ELLIPSE) {
         if (hasEllipseCenter && nearpoint(logical, ellipseCenter)) {
             if (ellipseVisible) {
@@ -1123,6 +1704,11 @@ void MainWindow::mouse_pressed()
             ui->comboEllipsePoint->setItemText(2, "Radius Y : " + QString::number(ellipseRy));
             calculateEllipseAlgorithms();
             on_btnAnimateEllipse_clicked();
+            Shape s; s.type = Shape::ELLIPSE; s.color = QColor(255, 0, 127);
+            s.ellipseCenter = ellipseCenter;
+            s.ellipseRx = ellipseRx; s.ellipseRy = ellipseRy;
+            s.selected = false;
+            addShapeToScene(s);
             drawgrid(); statusBar()->showMessage("Ellipse fully defined."); return;
         }
         return;
@@ -1143,6 +1729,13 @@ void MainWindow::mouse_pressed()
     } else if (currentTool == TOOL_BOUNDARY_FILL) {
         boundaryFill(logical, currentFillColor, currentBoundaryColor);
         drawgrid();
+        return;
+    } else if (currentTool == TOOL_CURVE) {
+        if (bezierControlPoints.size() < 4) {
+            bezierControlPoints.append(logical);
+            drawgrid();
+            statusBar()->showMessage(QString("Control point %1 added.").arg(bezierControlPoints.size()));
+        }
         return;
     }
 
@@ -1211,9 +1804,17 @@ void MainWindow::mouse_pressed()
         if (currentTool == TOOL_LINE) {
             calculatealgorithms();
             on_btnAnimateLine_clicked(); // Auto animate on click
+            Shape s; s.type = Shape::LINE; s.color = QColor(255, 255, 255);
+            s.lineP1 = point1; s.lineP2 = point2; s.selected = false;
+            addShapeToScene(s);
         } else if (currentTool == TOOL_CIRCLE) {
             calculateCircleAlgorithms();
             on_btnAnimateCircle_clicked(); // Auto animate on click
+            Shape s; s.type = Shape::CIRCLE; s.color = QColor(100, 255, 100);
+            s.circleCenter = point1;
+            s.circleRadius = qRound(qSqrt(qPow(point1.x()-point2.x(),2)+qPow(point1.y()-point2.y(),2)));
+            s.selected = false;
+            addShapeToScene(s);
         }
             
         drawgrid();
@@ -1234,6 +1835,30 @@ void MainWindow::mouse_dragged(QPoint &pos)
     if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
         if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
         ellipseAnimationStep = -1;
+
+    if (currentTool == TOOL_TRANSFORM && selectedShapeIndex >= 0 && selectedShapeIndex < scene.size()) {
+        QPoint logical = screentological(pos);
+        QPoint delta = logical - lastDragLogical;
+        lastDragLogical = logical;
+        Shape &s = scene[selectedShapeIndex];
+        switch (s.type) {
+        case Shape::LINE:
+            s.lineP1 += delta; s.lineP2 += delta; break;
+        case Shape::CIRCLE:
+            s.circleCenter += delta; break;
+        case Shape::ELLIPSE:
+            s.ellipseCenter += delta; break;
+        case Shape::POLYGON:
+            for (QPoint &v : s.polygonVertices) v += delta; break;
+        case Shape::BEZIER:
+            for (QPoint &cp : s.bezierControlPoints) cp += delta;
+            for (QPoint &bp : s.bezierCurvePoints) bp += delta; break;
+        }
+        pixelBuffer.clear();
+        for (Shape &sh : scene) rasterizeShapeToBuffer(sh);
+        drawgrid();
+        return;
+    }
     
     
     if (currentTool == TOOL_ELLIPSE) {
@@ -1385,17 +2010,23 @@ void MainWindow::on_btnAnimateLine_clicked()
     calculatealgorithms();
     
     ui->textDebugger->clear();
+    traceTags.clear();
     if (selectedalgorithm == 0 || selectedalgorithm == 2) {
         lineAnimationPoints = ddapoints;
         lineAnimationLogs = ddaLogs;
         ui->textDebugger->append("Starting DDA Line Animation...");
+        for (int i = 0; i < ddaLogs.size(); ++i)
+            traceTags.append(extractTraceTag(ddaLogs, i, 0));
     } else {
         lineAnimationPoints = bresenhampoints;
         lineAnimationLogs = bresenhamLogs;
         ui->textDebugger->append("Starting Bresenham Line Animation...");
+        for (int i = 0; i < bresenhamLogs.size(); ++i)
+            traceTags.append(extractTraceTag(bresenhamLogs, i, 1));
     }
     
     lineAnimationStep = 0;
+    syncPlaybackState();
     int interval = qRound(20 / animationSpeedMultiplier);
     if (interval < 1) interval = 1;
     lineAnimationTimer->start(interval);
@@ -1404,15 +2035,17 @@ void MainWindow::on_btnAnimateLine_clicked()
 
 void MainWindow::animateLineStep()
 {
-    if (lineAnimationStep >= lineAnimationPoints.size()) {
+    if (lineAnimationStep < 0 || lineAnimationStep >= lineAnimationPoints.size()) {
         lineAnimationTimer->stop();
         statusBar()->showMessage("Animation Complete.");
+        syncPlaybackState();
         return;
     }
     if (lineAnimationStep < lineAnimationLogs.size()) {
         ui->textDebugger->append(lineAnimationLogs[lineAnimationStep]);
     }
     lineAnimationStep++;
+    syncPlaybackState();
     drawgrid();
 }
 
@@ -1447,18 +2080,26 @@ void MainWindow::on_btnAnimateCircle_clicked()
     calculateCircleAlgorithms();
     
     ui->textDebugger->clear();
+    traceTags.clear();
     if (selectedCircleAlgorithm == 0) {
         animationPoints = polarPoints; animationLogs = polarLogs;
         ui->textDebugger->append("Starting Polar Animation...");
+        for (int i = 0; i < polarLogs.size(); ++i)
+            traceTags.append(extractTraceTag(polarLogs, i, 2));
     } else if (selectedCircleAlgorithm == 2) {
         animationPoints = cartesianPoints; animationLogs = cartesianLogs;
         ui->textDebugger->append("Starting Cartesian Animation...");
+        for (int i = 0; i < cartesianLogs.size(); ++i)
+            traceTags.append(extractTraceTag(cartesianLogs, i, 4));
     } else {
-        animationPoints = midpointPoints; animationLogs = midpointLogs; // Midpoint for All (Overlap)
+        animationPoints = midpointPoints; animationLogs = midpointLogs;
         ui->textDebugger->append("Starting Midpoint Animation...");
+        for (int i = 0; i < midpointLogs.size(); ++i)
+            traceTags.append(extractTraceTag(midpointLogs, i, 3));
     }
     
     animationStep = 0;
+    syncPlaybackState();
     int interval = qRound(50 / animationSpeedMultiplier);
     if (interval < 1) interval = 1;
     animationTimer->start(interval);
@@ -1467,15 +2108,17 @@ void MainWindow::on_btnAnimateCircle_clicked()
 
 void MainWindow::animateCircleStep()
 {
-    if (animationStep >= animationPoints.size()) {
+    if (animationStep < 0 || animationStep >= animationPoints.size()) {
         animationTimer->stop();
         statusBar()->showMessage("Animation Complete.");
+        syncPlaybackState();
         return;
     }
     if (animationStep < animationLogs.size()) {
         ui->textDebugger->append(animationLogs[animationStep]);
     }
     animationStep++;
+    syncPlaybackState();
     drawgrid();
 }
 
@@ -1686,6 +2329,34 @@ void MainWindow::calculateEllipseAlgorithms()
     
     ui->lblEllipseArea->setText(QString("Area: %1 px²").arg(area, 0, 'f', 1));
     ui->lblEllipsePerimeter->setText(QString("Perimeter (Ramanujan): %1 px").arg(perimeter, 0, 'f', 1));
+
+    // ---- ELLIPSE ACCURACY REPORT ----
+    if (ellipseRx > 0 && ellipseRy > 0) {
+        auto ellipseError = [this](const QSet<QPoint> &pts) -> QPair<double,double> {
+            double avgErr = 0, maxErr = 0;
+            double rx2 = (double)ellipseRx * ellipseRx;
+            double ry2 = (double)ellipseRy * ellipseRy;
+            for (const QPoint &p : pts) {
+                double val = ((double)p.x() * p.x()) / rx2 + ((double)p.y() * p.y()) / ry2;
+                double err = qAbs(val - 1.0);
+                avgErr += err;
+                if (err > maxErr) maxErr = err;
+            }
+            avgErr /= qMax(1, pts.size());
+            return {avgErr, maxErr};
+        };
+
+        auto [polarAvg, polarMax] = ellipseError(polarSet);
+        auto [midAvg, midMax] = ellipseError(midSet);
+        auto [cartAvg, cartMax] = ellipseError(cartSet);
+
+        ui->textDebugger->append(QString("<span style='color:#89b4fa'>[Ellipse Accuracy]</span> "
+            "rx=%1 ry=%2 | Polar: avg=%3 max=%4 | Mid: avg=%5 max=%6 | Cart: avg=%7 max=%8")
+            .arg(ellipseRx).arg(ellipseRy)
+            .arg(polarAvg, 0, 'f', 4).arg(polarMax, 0, 'f', 4)
+            .arg(midAvg, 0, 'f', 4).arg(midMax, 0, 'f', 4)
+            .arg(cartAvg, 0, 'f', 4).arg(cartMax, 0, 'f', 4));
+    }
 }
 
 void MainWindow::removeShapeFromBuffer(const QVector<QPoint> &points, const QColor &color) {
@@ -1791,12 +2462,27 @@ void MainWindow::on_btnAnimateEllipse_clicked() {
     calculateEllipseAlgorithms();
     ellipseVisible = true;
     ui->textDebugger->clear();
+    traceTags.clear();
     
-    if (selectedEllipseAlgorithm == 0) { ellipseAnimationPoints = ellipsePolarPoints; ellipseAnimationLogs = ellipsePolarLogs; ui->textDebugger->append("Starting Polar Ellipse..."); }
-    else if (selectedEllipseAlgorithm == 2) { ellipseAnimationPoints = ellipseCartesianPoints; ellipseAnimationLogs = ellipseCartesianLogs; ui->textDebugger->append("Starting Cartesian Ellipse..."); }
-    else { ellipseAnimationPoints = ellipseMidpointPoints; ellipseAnimationLogs = ellipseMidpointLogs; ui->textDebugger->append("Starting Midpoint (Bresenham) Ellipse..."); }
+    if (selectedEllipseAlgorithm == 0) {
+        ellipseAnimationPoints = ellipsePolarPoints; ellipseAnimationLogs = ellipsePolarLogs;
+        ui->textDebugger->append("Starting Polar Ellipse...");
+        for (int i = 0; i < ellipsePolarLogs.size(); ++i)
+            traceTags.append(extractTraceTag(ellipsePolarLogs, i, 2));
+    } else if (selectedEllipseAlgorithm == 2) {
+        ellipseAnimationPoints = ellipseCartesianPoints; ellipseAnimationLogs = ellipseCartesianLogs;
+        ui->textDebugger->append("Starting Cartesian Ellipse...");
+        for (int i = 0; i < ellipseCartesianLogs.size(); ++i)
+            traceTags.append(extractTraceTag(ellipseCartesianLogs, i, 4));
+    } else {
+        ellipseAnimationPoints = ellipseMidpointPoints; ellipseAnimationLogs = ellipseMidpointLogs;
+        ui->textDebugger->append("Starting Midpoint (Bresenham) Ellipse...");
+        for (int i = 0; i < ellipseMidpointLogs.size(); ++i)
+            traceTags.append(extractTraceTag(ellipseMidpointLogs, i, 3));
+    }
     
     ellipseAnimationStep = 0;
+    syncPlaybackState();
     int interval = qRound(30 / animationSpeedMultiplier);
     if (interval < 1) interval = 1;
     ellipseAnimationTimer->start(interval);
@@ -1804,8 +2490,9 @@ void MainWindow::on_btnAnimateEllipse_clicked() {
 }
 
 void MainWindow::animateEllipseStep() {
-    if (ellipseAnimationStep >= ellipseAnimationPoints.size()) {
-        ellipseAnimationTimer->stop(); statusBar()->showMessage("Animation Complete."); return;
+    if (ellipseAnimationStep < 0 || ellipseAnimationStep >= ellipseAnimationPoints.size()) {
+        ellipseAnimationTimer->stop(); statusBar()->showMessage("Animation Complete.");
+        syncPlaybackState(); return;
     }
     if (ellipseAnimationStep < ellipseAnimationLogs.size()) {
         ui->textDebugger->append(ellipseAnimationLogs[ellipseAnimationStep]);
@@ -1822,6 +2509,7 @@ void MainWindow::animateEllipseStep() {
     }
     
     ellipseAnimationStep++;
+    syncPlaybackState();
     drawgrid();
 }
 
@@ -1910,14 +2598,23 @@ void MainWindow::on_btnCommitEllipse_clicked() {
 }
 
 void MainWindow::selectTool(int toolIndex) {
-    if (toolIndex >= 4) return;
-    QStringList names = {"Line", "Circle", "Ellipse", "Polygon"};
+    if (toolIndex >= 6) return;
+    QStringList names = {"Line", "Circle", "Ellipse", "Polygon", "Transform", "Curve"};
+    static const ActiveTool kToolByIndex[6] = {
+        TOOL_LINE, TOOL_CIRCLE, TOOL_ELLIPSE,
+        TOOL_POLYGON, TOOL_TRANSFORM, TOOL_CURVE
+    };
     for(int i=0; i<sidebarButtons.size(); ++i) {
         sidebarButtons[i]->setChecked(i == toolIndex);
     }
-    currentTool = static_cast<ActiveTool>(toolIndex);
+    currentTool = kToolByIndex[toolIndex];
     settingsStack->setCurrentIndex(toolIndex);
     if (toolNameLabel) toolNameLabel->setText(names[toolIndex]);
+    if (comboPolygonMode) {
+        comboPolygonMode->blockSignals(true);
+        comboPolygonMode->setCurrentIndex(0);
+        comboPolygonMode->blockSignals(false);
+    }
     drawgrid();
 }
 
@@ -1961,6 +2658,29 @@ void MainWindow::handleClearCanvasClicked() {
     ellipsePolarPoints.clear();
     ellipseMidpointPoints.clear();
     ellipseCartesianPoints.clear();
+    lineAnimationPoints.clear();
+    lineAnimationLogs.clear();
+    animationPoints.clear();
+    animationLogs.clear();
+    ellipseAnimationPoints.clear();
+    ellipseAnimationLogs.clear();
+    traceTags.clear();
+    if (animationTimer->isActive()) animationTimer->stop();
+    if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+    if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    bezierControlPoints.clear();
+    bezierCurvePoints.clear();
+    bezierAnimPoints.clear();
+    bezierLogs.clear();
+    bezierTraceTags.clear();
+    bezierAnimStep = -1;
+    if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+    scene.clear();
+    selectedShapeIndex = -1;
+    undoStack.clear();
+    redoStack.clear();
+    hasArbLine = false;
+    hasArbPoint = false;
     drawgrid();
 }
 
@@ -2001,6 +2721,10 @@ void MainWindow::handlePolygonCloseClicked() {
         if (currentTool == TOOL_SCANLINE_FILL) {
             scanlineFillPolygon(savedVertices, currentFillColor, &committedPolygonPixels);
         }
+        Shape s; s.type = Shape::POLYGON; s.color = polygonFillColor;
+        s.polygonVertices = savedVertices;
+        s.selected = false;
+        addShapeToScene(s);
 
         activePolygonPoints.clear();
         polygonClosed = false;
@@ -2070,6 +2794,19 @@ void MainWindow::floodFill(const QPoint &startNode, const QColor &targetColor, c
                 QPoint np(p.x() + dirs[i].x(), p.y() + dirs[i].y());
                 if (np.x() == 0 || np.y() == 0) continue;
                 if (!visited.contains(np) && qAbs(np.x()) <= halfW && qAbs(np.y()) <= halfH) {
+                    if (dirs[i].x() != 0 && dirs[i].y() != 0) {
+                        QPoint orthoX(p.x() + dirs[i].x(), p.y());
+                        QPoint orthoY(p.x(), p.y() + dirs[i].y());
+                        bool orthoXOk, orthoYOk;
+                        if (targetIsBackground) {
+                            orthoXOk = !pixelBuffer.contains(orthoX);
+                            orthoYOk = !pixelBuffer.contains(orthoY);
+                        } else {
+                            orthoXOk = pixelBuffer.contains(orthoX) && pixelBuffer[orthoX].contains(targetColor);
+                            orthoYOk = pixelBuffer.contains(orthoY) && pixelBuffer[orthoY].contains(targetColor);
+                        }
+                        if (!orthoXOk || !orthoYOk) continue;
+                    }
                     visited.insert(np);
                     queue.enqueue(np);
                 }
@@ -2109,6 +2846,11 @@ void MainWindow::boundaryFill(const QPoint &startNode, const QColor &fillColor, 
         for (int i = 0; i < dirCount; ++i) {
             QPoint np(p.x() + dirs[i].x(), p.y() + dirs[i].y());
             if (!visited.contains(np) && qAbs(np.x()) <= halfW && qAbs(np.y()) <= halfH) {
+                if (dirs[i].x() != 0 && dirs[i].y() != 0) {
+                    QPoint orthoX(p.x() + dirs[i].x(), p.y());
+                    QPoint orthoY(p.x(), p.y() + dirs[i].y());
+                    if (pixelBuffer.contains(orthoX) || pixelBuffer.contains(orthoY)) continue;
+                }
                 visited.insert(np);
                 queue.enqueue(np);
             }
@@ -2164,6 +2906,811 @@ void MainWindow::drawPolygonEdges(QPainter &painter, const QVector<QPoint> &vert
         QVector<QPoint> edge = calculatedda(p1, p2, dummyTime);
         for(const QPoint& p : edge) {
             drawpoint(painter, p, color);
+        }
+    }
+}
+
+void MainWindow::multiplyMatrix3x3(double m1[3][3], double m2[3][3], double result[3][3]) {
+    double temp[3][3];
+    for(int i=0; i<3; ++i) {
+        for(int j=0; j<3; ++j) {
+            temp[i][j] = 0;
+            for(int k=0; k<3; ++k) {
+                temp[i][j] += m1[i][k] * m2[k][j];
+            }
+        }
+    }
+    for(int i=0; i<3; ++i) {
+        for(int j=0; j<3; ++j) {
+            result[i][j] = temp[i][j];
+        }
+    }
+}
+
+QPoint MainWindow::transformPoint(const QPoint& p, double T[3][3]) {
+    double x = p.x() * T[0][0] + p.y() * T[0][1] + 1 * T[0][2];
+    double y = p.x() * T[1][0] + p.y() * T[1][1] + 1 * T[1][2];
+    double w = p.x() * T[2][0] + p.y() * T[2][1] + 1 * T[2][2];
+    if (w != 0 && w != 1) {
+        x /= w; y /= w;
+    }
+    return QPoint(qRound(x), qRound(y));
+}
+
+void MainWindow::applyTransformationMatrix(double T[3][3]) {
+    if (lastClosedPolygonVertices.isEmpty()) return;
+    pushUndo();
+
+    // Always save the current polygon as a ghost before transforming
+    {
+        Shape ghost;
+        ghost.type = Shape::POLYGON;
+        QColor ghostColor(polygonFillColor.red() / 2 + 128,
+                          polygonFillColor.green() / 2 + 128,
+                          polygonFillColor.blue() / 2 + 128);
+        ghost.color = ghostColor;
+        ghost.selected = false;
+        ghost.polygonVertices = lastClosedPolygonVertices;
+        qint64 dt = 0;
+        for (int i = 0; i < ghost.polygonVertices.size(); ++i) {
+            QPoint p1 = ghost.polygonVertices[i];
+            QPoint p2 = ghost.polygonVertices[(i + 1) % ghost.polygonVertices.size()];
+            QVector<QPoint> edge = calculatedda(p1, p2, dt);
+            for (const QPoint &ep : edge) {
+                if (!pixelBuffer[ep].contains(ghostColor)) {
+                    pixelBuffer[ep].append(ghostColor);
+                }
+                ghost.shapePixels[ep].append(ghostColor);
+            }
+        }
+        scene.append(ghost);
+    }
+
+    // Transform points
+    QVector<QPoint> newVertices;
+    for (const QPoint& p : lastClosedPolygonVertices) {
+        newVertices.append(transformPoint(p, T));
+    }
+
+    // Erase old polygon pixels from pixelBuffer
+    for (const QPoint& p : committedPolygonPixels) {
+        if (pixelBuffer.contains(p)) {
+            pixelBuffer[p].removeAll(polygonFillColor);
+            pixelBuffer[p].removeAll(currentFillColor);
+            pixelBuffer[p].removeAll(currentBoundaryColor);
+            if (pixelBuffer[p].isEmpty()) {
+                pixelBuffer.remove(p);
+            }
+        }
+    }
+    committedPolygonPixels.clear();
+
+    // Redraw new edges
+    lastClosedPolygonVertices = newVertices;
+    
+    qint64 dummyTime = 0;
+    for (int i = 0; i < newVertices.size(); ++i) {
+        QPoint p1 = newVertices[i];
+        QPoint p2 = newVertices[(i + 1) % newVertices.size()];
+        QVector<QPoint> edge = calculatedda(p1, p2, dummyTime);
+        for(const QPoint& ep : edge) {
+            if (!pixelBuffer[ep].contains(polygonFillColor)) {
+                pixelBuffer[ep].append(polygonFillColor);
+            }
+            committedPolygonPixels.append(ep);
+        }
+    }
+    drawgrid();
+}
+
+void MainWindow::handleTransformTranslate() {
+    QSpinBox* spinTx = this->findChild<QSpinBox*>("spinTx");
+    QSpinBox* spinTy = this->findChild<QSpinBox*>("spinTy");
+    if(!spinTx || !spinTy) return;
+    double dx = spinTx->value();
+    double dy = spinTy->value();
+    
+    double T[3][3] = {
+        {1, 0, dx},
+        {0, 1, dy},
+        {0, 0, 1}
+    };
+    applyTransformationMatrix(T);
+    if (dx != 0 || dy != 0) {
+        statusBar()->showMessage(QString("Translated polygon by (%1, %2).").arg(dx).arg(dy));
+        spinTx->setValue(0);
+        spinTy->setValue(0);
+    }
+}
+
+void MainWindow::handleTransformRotate() {
+    QDoubleSpinBox* spinAngle = this->findChild<QDoubleSpinBox*>("spinAngle");
+    if(!spinAngle) return;
+    double rad = spinAngle->value() * M_PI / 180.0;
+    
+    double T[3][3] = {
+        {cos(rad), -sin(rad), 0},
+        {sin(rad),  cos(rad), 0},
+        {0,         0,        1}
+    };
+    applyTransformationMatrix(T);
+    if (spinAngle->value() != 0) {
+        statusBar()->showMessage(QString("Rotated polygon by %1°.").arg(spinAngle->value()));
+        spinAngle->setValue(0);
+    }
+}
+
+void MainWindow::handleTransformScale() {
+    QDoubleSpinBox* spinSx = this->findChild<QDoubleSpinBox*>("spinSx");
+    QDoubleSpinBox* spinSy = this->findChild<QDoubleSpinBox*>("spinSy");
+    if(!spinSx || !spinSy) return;
+    
+    double T[3][3] = {
+        {spinSx->value(), 0, 0},
+        {0, spinSy->value(), 0},
+        {0, 0,               1}
+    };
+    applyTransformationMatrix(T);
+    if (spinSx->value() != 1.0 || spinSy->value() != 1.0) {
+        statusBar()->showMessage(QString("Scaled polygon by (x%1, y%2).")
+                                 .arg(spinSx->value()).arg(spinSy->value()));
+        spinSx->setValue(1.0);
+        spinSy->setValue(1.0);
+    }
+}
+
+void MainWindow::handleTransformShear() {
+    QDoubleSpinBox* spinShx = this->findChild<QDoubleSpinBox*>("spinShx");
+    QDoubleSpinBox* spinShy = this->findChild<QDoubleSpinBox*>("spinShy");
+    if(!spinShx || !spinShy) return;
+    
+    double T[3][3] = {
+        {1, spinShx->value(), 0},
+        {spinShy->value(), 1, 0},
+        {0, 0,                1}
+    };
+    applyTransformationMatrix(T);
+    if (spinShx->value() != 0 || spinShy->value() != 0) {
+        statusBar()->showMessage(QString("Sheared polygon by (x%1, y%2).")
+                                 .arg(spinShx->value()).arg(spinShy->value()));
+        spinShx->setValue(0);
+        spinShy->setValue(0);
+    }
+}
+
+void MainWindow::handleTransformReflectX() {
+    double T[3][3] = {
+        {1,  0, 0},
+        {0, -1, 0},
+        {0,  0, 1}
+    };
+    applyTransformationMatrix(T);
+    statusBar()->showMessage("Reflected polygon about the X-axis.");
+}
+
+void MainWindow::handleTransformReflectY() {
+    double T[3][3] = {
+        {-1, 0, 0},
+        {0,  1, 0},
+        {0,  0, 1}
+    };
+    applyTransformationMatrix(T);
+    statusBar()->showMessage("Reflected polygon about the Y-axis.");
+}
+
+void MainWindow::handleTransformReflectOrigin() {
+    double T[3][3] = {
+        {-1,  0, 0},
+        { 0, -1, 0},
+        { 0,  0, 1}
+    };
+    applyTransformationMatrix(T);
+    statusBar()->showMessage("Reflected polygon about the origin.");
+}
+
+void MainWindow::handleTransformArbitraryLine() {
+    QSpinBox* alX1 = this->findChild<QSpinBox*>("alX1");
+    QSpinBox* alY1 = this->findChild<QSpinBox*>("alY1");
+    QSpinBox* alX2 = this->findChild<QSpinBox*>("alX2");
+    QSpinBox* alY2 = this->findChild<QSpinBox*>("alY2");
+    if(!alX1 || !alY1 || !alX2 || !alY2) return;
+    
+    double x1 = alX1->value(), y1 = alY1->value();
+    double x2 = alX2->value(), y2 = alY2->value();
+    if (x1 == x2 && y1 == y2) {
+        statusBar()->showMessage("Reflect: axis points are identical, pick two distinct points.");
+        return;
+    }
+    
+    double finalT[3][3];
+
+    // Vertical line: x = x1  =>  x -> 2*x1 - x, y unchanged
+    if (x1 == x2) {
+        double k = x1;
+        finalT[0][0] = -1;  finalT[0][1] = 0;  finalT[0][2] = 2 * k;
+        finalT[1][0] =  0;  finalT[1][1] = 1;  finalT[1][2] = 0;
+        finalT[2][0] =  0;  finalT[2][1] = 0;  finalT[2][2] = 1;
+    } else {
+        double m = (y2 - y1) / (x2 - x1);
+        double c = y1 - m * x1;
+
+        double T1[3][3] = { {1, 0, 0}, {0, 1, -c}, {0, 0, 1} };
+        double theta = atan(m);
+        double T2[3][3] = { {cos(-theta), -sin(-theta), 0}, {sin(-theta), cos(-theta), 0}, {0, 0, 1} };
+        double T3[3][3] = { {1, 0, 0}, {0, -1, 0}, {0, 0, 1} };
+        double T4[3][3] = { {cos(theta), -sin(theta), 0}, {sin(theta), cos(theta), 0}, {0, 0, 1} };
+        double T5[3][3] = { {1, 0, 0}, {0, 1, c}, {0, 0, 1} };
+
+        multiplyMatrix3x3(T2, T1, finalT);
+        multiplyMatrix3x3(T3, finalT, finalT);
+        multiplyMatrix3x3(T4, finalT, finalT);
+        multiplyMatrix3x3(T5, finalT, finalT);
+    }
+    
+    applyTransformationMatrix(finalT);
+    hasArbLine = true;
+    arbLineX1 = x1; arbLineY1 = y1;
+    arbLineX2 = x2; arbLineY2 = y2;
+    statusBar()->showMessage(QString("Reflected polygon about line (%1,%2)-(%3,%4).")
+                             .arg(x1).arg(y1).arg(x2).arg(y2));
+    alX1->setValue(0); alY1->setValue(0); alX2->setValue(10); alY2->setValue(10);
+}
+
+void MainWindow::handleTransformArbitraryPoint() {
+    QSpinBox* apX = this->findChild<QSpinBox*>("apX");
+    QSpinBox* apY = this->findChild<QSpinBox*>("apY");
+    QDoubleSpinBox* apA = this->findChild<QDoubleSpinBox*>("apA");
+    if(!apX || !apY || !apA) return;
+    
+    double px = apX->value();
+    double py = apY->value();
+    double angle = apA->value();
+    double rad = angle * M_PI / 180.0;
+    
+    double T1[3][3] = { {1, 0, -px}, {0, 1, -py}, {0, 0, 1} };
+    double T2[3][3] = { {cos(rad), -sin(rad), 0}, {sin(rad), cos(rad), 0}, {0, 0, 1} };
+    double T3[3][3] = { {1, 0, px}, {0, 1, py}, {0, 0, 1} };
+    
+    double finalT[3][3] = { {1,0,0}, {0,1,0}, {0,0,1} };
+    multiplyMatrix3x3(T2, T1, finalT);
+    multiplyMatrix3x3(T3, finalT, finalT);
+    
+    applyTransformationMatrix(finalT);
+    if (angle != 0) {
+        hasArbPoint = true;
+        arbPointX = px; arbPointY = py;
+        statusBar()->showMessage(QString("Rotated polygon by %1° about point (%2, %3).")
+                                 .arg(angle).arg(px).arg(py));
+        apA->setValue(0);
+    } else {
+        statusBar()->showMessage("Enter a nonzero angle to rotate about the chosen point.");
+    }
+}
+
+// ---- PLAYBACK HELPERS ----
+
+int MainWindow::getActiveAnimationStep() const {
+    if (currentTool == TOOL_LINE) return lineAnimationStep;
+    if (currentTool == TOOL_CIRCLE) return animationStep;
+    if (currentTool == TOOL_ELLIPSE) return ellipseAnimationStep;
+    if (currentTool == TOOL_CURVE) return bezierAnimStep;
+    return -1;
+}
+
+void MainWindow::setActiveAnimationStep(int step) {
+    if (currentTool == TOOL_LINE) lineAnimationStep = step;
+    else if (currentTool == TOOL_CIRCLE) animationStep = step;
+    else if (currentTool == TOOL_ELLIPSE) ellipseAnimationStep = step;
+    else if (currentTool == TOOL_CURVE) bezierAnimStep = step;
+}
+
+int MainWindow::getActiveAnimationPointCount() const {
+    if (currentTool == TOOL_LINE) return lineAnimationPoints.size();
+    if (currentTool == TOOL_CIRCLE) return animationPoints.size();
+    if (currentTool == TOOL_ELLIPSE) return ellipseAnimationPoints.size();
+    if (currentTool == TOOL_CURVE) return bezierAnimPoints.size();
+    return 0;
+}
+
+QVector<QPoint> MainWindow::getActiveAnimationPoints() const {
+    if (currentTool == TOOL_LINE) return lineAnimationPoints;
+    if (currentTool == TOOL_CIRCLE) return animationPoints;
+    if (currentTool == TOOL_ELLIPSE) return ellipseAnimationPoints;
+    if (currentTool == TOOL_CURVE) return bezierAnimPoints;
+    return {};
+}
+
+void MainWindow::syncPlaybackState() {
+    QSlider* slider = findChild<QSlider*>("scrubSlider");
+    QLabel* info = findChild<QLabel*>("lblStepInfo");
+    if (!slider || !info) return;
+
+    int total = getActiveAnimationPointCount();
+    int current = getActiveAnimationStep();
+
+    if (total > 0 && current >= 0) {
+        slider->blockSignals(true);
+        slider->setRange(0, total - 1);
+        slider->setValue(current < total ? current : total - 1);
+        slider->blockSignals(false);
+        info->setText(QString("%1 / %2").arg(current + 1).arg(total));
+    } else {
+        slider->blockSignals(true);
+        slider->setRange(0, 0);
+        slider->setValue(0);
+        slider->blockSignals(false);
+        info->setText("0 / 0");
+    }
+}
+
+void MainWindow::onStepBackClicked() {
+    int step = getActiveAnimationStep();
+    if (step <= 0) return;
+
+    // Stop any running timer so manual stepping doesn't conflict
+    if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+    if (animationTimer->isActive()) animationTimer->stop();
+    if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+
+    setActiveAnimationStep(step - 1);
+    syncPlaybackState();
+    drawgrid();
+}
+
+void MainWindow::onStepForwardClicked() {
+    int step = getActiveAnimationStep();
+    int total = getActiveAnimationPointCount();
+    if (step < 0 || step >= total) return;
+
+    // Stop any running timer
+    if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+    if (animationTimer->isActive()) animationTimer->stop();
+    if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+
+    setActiveAnimationStep(step + 1);
+    syncPlaybackState();
+    drawgrid();
+}
+
+void MainWindow::onScrubSliderChanged(int value) {
+    int total = getActiveAnimationPointCount();
+    if (total == 0) return;
+
+    // Stop any running timer
+    if (lineAnimationTimer->isActive()) lineAnimationTimer->stop();
+    if (animationTimer->isActive()) animationTimer->stop();
+    if (ellipseAnimationTimer->isActive()) ellipseAnimationTimer->stop();
+    if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+
+    setActiveAnimationStep(value);
+    syncPlaybackState();
+    drawgrid();
+}
+
+// ---- BEZIER CURVE ----
+
+QVector<QPoint> MainWindow::deCasteljauStep(const QVector<QPoint> &pts, double t) {
+    QVector<QPoint> result;
+    if (pts.size() < 2) return pts;
+    for (int i = 0; i < pts.size() - 1; ++i) {
+        int x = qRound(pts[i].x() * (1 - t) + pts[i + 1].x() * t);
+        int y = qRound(pts[i].y() * (1 - t) + pts[i + 1].y() * t);
+        result.append(QPoint(x, y));
+    }
+    return result;
+}
+
+QVector<QPoint> MainWindow::calculateBezierCurve() {
+    QElapsedTimer timer;
+    timer.start();
+    bezierLogs.clear();
+    bezierCurvePoints.clear();
+
+    if (bezierControlPoints.size() < 4) return {};
+
+    int steps = 200;
+    for (int i = 0; i <= steps; ++i) {
+        double t = (double)i / steps;
+
+        // Recursive de Casteljau
+        QVector<QPoint> working = bezierControlPoints;
+        QVector<QString> intermediateSteps;
+        while (working.size() > 1) {
+            intermediateSteps.append(QString("  [%1]").arg(working.size()));
+            working = deCasteljauStep(working, t);
+        }
+        QPoint pt = working[0];
+        bezierCurvePoints.append(pt);
+        bezierLogs.append(QString("<span style='color:#f5c2e7'>t=%1</span> -> (%2, %3)")
+                          .arg(t, 0, 'f', 3).arg(pt.x()).arg(pt.y()));
+    }
+
+    qint64 elapsed = timer.nsecsElapsed();
+    QLabel* lblTime = findChild<QLabel*>("lblCurveTime");
+    QLabel* lblCount = findChild<QLabel*>("lblCurveCount");
+    QLabel* lblSteps = findChild<QLabel*>("lblCurveSteps");
+    if (lblTime) lblTime->setText("Bezier Time: " + formattime(elapsed));
+    if (lblCount) lblCount->setText("Curve Points: " + QString::number(bezierCurvePoints.size()));
+    if (lblSteps) lblSteps->setText("Steps: " + QString::number(steps));
+
+    return bezierCurvePoints;
+}
+
+void MainWindow::handleBezierDrawInstantly() {
+    if (bezierControlPoints.size() < 4) {
+        statusBar()->showMessage("Place 4 control points first.");
+        return;
+    }
+    calculateBezierCurve();
+    ui->textDebugger->clear();
+    for (const QString &log : bezierLogs)
+        ui->textDebugger->append(log);
+    drawgrid();
+    statusBar()->showMessage("Bezier curve drawn instantly.");
+}
+
+void MainWindow::handleBezierAnimate() {
+    if (bezierControlPoints.size() < 4) {
+        statusBar()->showMessage("Place 4 control points first.");
+        return;
+    }
+    calculateBezierCurve();
+    ui->textDebugger->clear();
+    ui->textDebugger->append("Starting Bezier Animation...");
+
+    bezierAnimPoints = bezierCurvePoints;
+    bezierTraceTags.clear();
+    for (int i = 0; i < bezierLogs.size(); ++i)
+        bezierTraceTags.append(bezierLogs[i]);
+
+    bezierAnimStep = 0;
+    syncPlaybackState();
+    int interval = qRound(20 / animationSpeedMultiplier);
+    if (interval < 1) interval = 1;
+    bezierAnimTimer->start(interval);
+    statusBar()->showMessage("Animating Bezier curve...");
+}
+
+void MainWindow::animateBezierStep() {
+    if (bezierAnimStep < 0 || bezierAnimStep >= bezierAnimPoints.size()) {
+        bezierAnimTimer->stop();
+        statusBar()->showMessage("Animation Complete.");
+        syncPlaybackState();
+        return;
+    }
+    if (bezierAnimStep < bezierLogs.size()) {
+        ui->textDebugger->append(bezierLogs[bezierAnimStep]);
+    }
+    bezierAnimStep++;
+    syncPlaybackState();
+    drawgrid();
+}
+
+void MainWindow::handleBezierClear() {
+    bezierControlPoints.clear();
+    bezierCurvePoints.clear();
+    bezierAnimPoints.clear();
+    bezierLogs.clear();
+    bezierTraceTags.clear();
+    bezierAnimStep = -1;
+    if (bezierAnimTimer->isActive()) bezierAnimTimer->stop();
+    QLabel* lblTime = findChild<QLabel*>("lblCurveTime");
+    QLabel* lblCount = findChild<QLabel*>("lblCurveCount");
+    QLabel* lblSteps = findChild<QLabel*>("lblCurveSteps");
+    if (lblTime) lblTime->setText("Bezier Time: -");
+    if (lblCount) lblCount->setText("Curve Points: -");
+    if (lblSteps) lblSteps->setText("Steps: -");
+    drawgrid();
+    statusBar()->showMessage("Bezier cleared.");
+}
+
+// ---- SCENE / UNDO / DELETE / ZOOM ----
+
+void MainWindow::keyPressEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Delete || event->key() == Qt::Key_Backspace) {
+        deleteSelectedShape();
+        return;
+    }
+    if (event->key() == Qt::Key_Z && (event->modifiers() & Qt::ControlModifier)) {
+        if (event->modifiers() & Qt::ShiftModifier) redo();
+        else undo();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape) {
+        selectedShapeIndex = -1;
+        drawgrid();
+        return;
+    }
+    QMainWindow::keyPressEvent(event);
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if (obj == ui->frame && event->type() == QEvent::KeyPress) {
+        QKeyEvent *ke = static_cast<QKeyEvent*>(event);
+        keyPressEvent(ke);
+        return true;
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::pushUndo() {
+    SceneSnapshot snap;
+    snap.shapes = scene;
+    undoStack.append(snap);
+    if (undoStack.size() > 200) undoStack.removeFirst();
+    redoStack.clear();
+}
+
+void MainWindow::undo() {
+    if (undoStack.isEmpty()) { statusBar()->showMessage("Nothing to undo."); return; }
+    SceneSnapshot current;
+    current.shapes = scene;
+    redoStack.append(current);
+    scene = undoStack.takeLast().shapes;
+    selectedShapeIndex = -1;
+    pixelBuffer.clear();
+    for (Shape &s : scene) rasterizeShapeToBuffer(s);
+    drawgrid();
+    statusBar()->showMessage("Undo.");
+}
+
+void MainWindow::redo() {
+    if (redoStack.isEmpty()) { statusBar()->showMessage("Nothing to redo."); return; }
+    SceneSnapshot current;
+    current.shapes = scene;
+    undoStack.append(current);
+    scene = redoStack.takeLast().shapes;
+    selectedShapeIndex = -1;
+    pixelBuffer.clear();
+    for (Shape &s : scene) rasterizeShapeToBuffer(s);
+    drawgrid();
+    statusBar()->showMessage("Redo.");
+}
+
+int MainWindow::hitTestShape(const QPoint &logical) const {
+    for (int i = scene.size() - 1; i >= 0; --i) {
+        const Shape &s = scene[i];
+        switch (s.type) {
+        case Shape::LINE: {
+            double dx = s.lineP2.x() - s.lineP1.x();
+            double dy = s.lineP2.y() - s.lineP1.y();
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 1) { if (nearpoint(logical, s.lineP1)) return i; break; }
+            double t = qMax(0.0, qMin(1.0, ((logical.x() - s.lineP1.x()) * dx + (logical.y() - s.lineP1.y()) * dy) / len2));
+            QPoint proj(s.lineP1.x() + qRound(t * dx), s.lineP1.y() + qRound(t * dy));
+            if (nearpoint(logical, proj)) return i;
+            break;
+        }
+        case Shape::CIRCLE: {
+            double dx = logical.x() - s.circleCenter.x();
+            double dy = logical.y() - s.circleCenter.y();
+            double dist = qSqrt(dx * dx + dy * dy);
+            if (qAbs(dist - s.circleRadius) <= 1.5) return i;
+            break;
+        }
+        case Shape::ELLIPSE: {
+            double dx = logical.x() - s.ellipseCenter.x();
+            double dy = logical.y() - s.ellipseCenter.y();
+            double norm = (dx * dx) / (double)(s.ellipseRx * s.ellipseRx) + (dy * dy) / (double)(s.ellipseRy * s.ellipseRy);
+            if (qAbs(norm - 1.0) < 0.15) return i;
+            break;
+        }
+        case Shape::POLYGON: {
+            for (const QPoint &v : s.polygonVertices)
+                if (nearpoint(logical, v)) return i;
+            for (int j = 0; j < s.polygonVertices.size(); ++j) {
+                QPoint a = s.polygonVertices[j];
+                QPoint b = s.polygonVertices[(j + 1) % s.polygonVertices.size()];
+                double dx = b.x() - a.x();
+                double dy = b.y() - a.y();
+                double len2 = dx * dx + dy * dy;
+                if (len2 < 1) continue;
+                double t = qMax(0.0, qMin(1.0, ((logical.x() - a.x()) * dx + (logical.y() - a.y()) * dy) / len2));
+                QPoint proj(a.x() + qRound(t * dx), a.y() + qRound(t * dy));
+                if (nearpoint(logical, proj)) return i;
+            }
+            break;
+        }
+        case Shape::BEZIER: {
+            for (const QPoint &cp : s.bezierControlPoints)
+                if (nearpoint(logical, cp)) return i;
+            break;
+        }
+        }
+    }
+    return -1;
+}
+
+void MainWindow::addShapeToScene(Shape &s) {
+    scene.append(s);
+    selectedShapeIndex = -1;
+}
+
+void MainWindow::rasterizeShapeToBuffer(Shape &s) {
+    s.shapePixels.clear();
+    qint64 dt = 0;
+    QColor fillColor = s.color;
+
+    switch (s.type) {
+    case Shape::LINE: {
+        QVector<QPoint> pts = calculatedda(s.lineP1, s.lineP2, dt);
+        for (const QPoint &p : pts) {
+            pixelBuffer[p].append(fillColor);
+            s.shapePixels[p].append(fillColor);
+        }
+        QVector<QPoint> pts2 = calculatebresenham(s.lineP1, s.lineP2, dt);
+        QColor bc = fillColor.lighter(130);
+        for (const QPoint &p : pts2) {
+            pixelBuffer[p].append(bc);
+            s.shapePixels[p].append(bc);
+        }
+        break;
+    }
+    case Shape::CIRCLE: {
+        if (s.circleRadius <= 0) break;
+        QVector<QPoint> polar = calculateCirclePolar(s.circleCenter, s.circleRadius, dt);
+        for (const QPoint &p : polar) {
+            pixelBuffer[p].append(fillColor);
+            s.shapePixels[p].append(fillColor);
+        }
+        QVector<QPoint> mid = calculateCircleMidpoint(s.circleCenter, s.circleRadius, dt);
+        QColor mc = QColor(100, 255, 100);
+        for (const QPoint &p : mid) {
+            pixelBuffer[p].append(mc);
+            s.shapePixels[p].append(mc);
+        }
+        QVector<QPoint> cart = calculateCircleCartesian(s.circleCenter, s.circleRadius, dt);
+        QColor cc = QColor(100, 200, 255);
+        for (const QPoint &p : cart) {
+            pixelBuffer[p].append(cc);
+            s.shapePixels[p].append(cc);
+        }
+        break;
+    }
+    case Shape::ELLIPSE: {
+        if (s.ellipseRx <= 0 || s.ellipseRy <= 0) break;
+        QVector<QPoint> polar = calculateEllipsePolar(s.ellipseCenter, s.ellipseRx, s.ellipseRy, dt);
+        for (const QPoint &p : polar) {
+            pixelBuffer[p].append(fillColor);
+            s.shapePixels[p].append(fillColor);
+        }
+        QVector<QPoint> mid = calculateEllipseMidpoint(s.ellipseCenter, s.ellipseRx, s.ellipseRy, dt);
+        QColor mc = QColor(0, 245, 212);
+        for (const QPoint &p : mid) {
+            pixelBuffer[p].append(mc);
+            s.shapePixels[p].append(mc);
+        }
+        QVector<QPoint> cart = calculateEllipseCartesian(s.ellipseCenter, s.ellipseRx, s.ellipseRy, dt);
+        QColor cc = QColor(56, 189, 248);
+        for (const QPoint &p : cart) {
+            pixelBuffer[p].append(cc);
+            s.shapePixels[p].append(cc);
+        }
+        break;
+    }
+    case Shape::POLYGON: {
+        for (int i = 0; i < s.polygonVertices.size(); ++i) {
+            QPoint p1 = s.polygonVertices[i];
+            QPoint p2 = s.polygonVertices[(i + 1) % s.polygonVertices.size()];
+            QVector<QPoint> edge = calculatedda(p1, p2, dt);
+            for (const QPoint &p : edge) {
+                if (!pixelBuffer[p].contains(fillColor)) {
+                    pixelBuffer[p].append(fillColor);
+                }
+                s.shapePixels[p].append(fillColor);
+            }
+        }
+        break;
+    }
+    case Shape::BEZIER: {
+        for (int i = 0; i < s.bezierCurvePoints.size() - 1; ++i) {
+            QVector<QPoint> seg = calculatedda(s.bezierCurvePoints[i], s.bezierCurvePoints[i+1], dt);
+            for (const QPoint &p : seg) {
+                pixelBuffer[p].append(fillColor);
+                s.shapePixels[p].append(fillColor);
+            }
+        }
+        break;
+    }
+    }
+}
+
+void MainWindow::removeShapePixelsFromBuffer(const Shape &s) {
+    for (auto it = s.shapePixels.constBegin(); it != s.shapePixels.constEnd(); ++it) {
+        if (pixelBuffer.contains(it.key())) {
+            for (const QColor &c : it.value()) {
+                pixelBuffer[it.key()].removeAll(c);
+            }
+            if (pixelBuffer[it.key()].isEmpty()) {
+                pixelBuffer.remove(it.key());
+            }
+        }
+    }
+}
+
+void MainWindow::deleteSelectedShape() {
+    if (selectedShapeIndex < 0 || selectedShapeIndex >= scene.size()) {
+        statusBar()->showMessage("No shape selected to delete.");
+        return;
+    }
+    pushUndo();
+    scene.remove(selectedShapeIndex);
+    selectedShapeIndex = -1;
+    pixelBuffer.clear();
+    for (Shape &s : scene) rasterizeShapeToBuffer(s);
+    drawgrid();
+    statusBar()->showMessage("Shape deleted.");
+}
+
+void MainWindow::drawSceneShapes(QPainter &painter) {
+    for (int i = 0; i < scene.size(); ++i) {
+        const Shape &s = scene[i];
+        if (i != selectedShapeIndex) continue;
+
+        QPen selPen(QColor(255, 255, 100, 200));
+        selPen.setWidth(2);
+        selPen.setStyle(Qt::DashLine);
+        painter.setPen(selPen);
+
+        switch (s.type) {
+        case Shape::LINE: {
+            QPoint s1 = logicaltoscreen(s.lineP1);
+            QPoint s2 = logicaltoscreen(s.lineP2);
+            painter.drawLine(s1, s2);
+            painter.fillRect(s1.x() - 3, s1.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            painter.fillRect(s2.x() - 3, s2.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            break;
+        }
+        case Shape::CIRCLE: {
+            QPoint sc = logicaltoscreen(s.circleCenter);
+            int sr = s.circleRadius * gridsize;
+            if (sr > 0) {
+                painter.drawEllipse(sc, sr + 3, sr + 3);
+                painter.drawEllipse(sc, sr - 3, sr - 3);
+            }
+            painter.fillRect(sc.x() - 3, sc.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            break;
+        }
+        case Shape::ELLIPSE: {
+            QPoint sc = logicaltoscreen(s.ellipseCenter);
+            int srx = s.ellipseRx * gridsize;
+            int sry = s.ellipseRy * gridsize;
+            if (srx > 0 && sry > 0) {
+                painter.drawEllipse(sc, srx + 3, sry + 3);
+                painter.drawEllipse(sc, srx - 3, sry - 3);
+            }
+            painter.fillRect(sc.x() - 3, sc.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            break;
+        }
+        case Shape::POLYGON: {
+            if (s.polygonVertices.size() >= 2) {
+                for (int j = 0; j < s.polygonVertices.size(); ++j) {
+                    QPoint a = logicaltoscreen(s.polygonVertices[j]);
+                    QPoint b = logicaltoscreen(s.polygonVertices[(j + 1) % s.polygonVertices.size()]);
+                    painter.drawLine(a.x(), a.y(), b.x(), b.y());
+                }
+            }
+            for (const QPoint &v : s.polygonVertices) {
+                QPoint sv = logicaltoscreen(v);
+                painter.fillRect(sv.x() - 3, sv.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            }
+            break;
+        }
+        case Shape::BEZIER: {
+            if (s.bezierCurvePoints.size() >= 2) {
+                for (int j = 0; j < s.bezierCurvePoints.size() - 1; ++j) {
+                    painter.drawLine(logicaltoscreen(s.bezierCurvePoints[j]),
+                                     logicaltoscreen(s.bezierCurvePoints[j + 1]));
+                }
+            }
+            for (const QPoint &cp : s.bezierControlPoints) {
+                QPoint scp = logicaltoscreen(cp);
+                painter.fillRect(scp.x() - 3, scp.y() - 3, 7, 7, QColor(255, 255, 100, 180));
+            }
+            break;
+        }
         }
     }
 }

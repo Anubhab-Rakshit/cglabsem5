@@ -32,3 +32,4 @@ ui_*.h
 .DS_Store
 *.app/
 build/
+opencode_ses.txt
